@@ -1,0 +1,298 @@
+"""Multi-mode LLM access for pipeline skills. See PLAN.md §9 (LLM_PROVIDER).
+
+Three backends, selected by the ``LLM_PROVIDER`` env var:
+
+- ``session`` (default): **orchestrator-in-the-loop** — the reasoning is done by
+  the CURRENT Claude Code session (the orchestrator running these skills), so **no
+  API key and no network/cost**. LLM-powered skills run in two steps: a ``prepare``
+  step (deterministic Python) selects the rows that still need work and prints the
+  exact prompt(s); the orchestrator reads them, produces the answers itself, and a
+  ``save`` step (deterministic Python) writes the answers back to the store. The
+  store rows ARE the work queue (e.g. jobs at ``matched`` without a ``jd_brief``),
+  so the flow is naturally resumable. ``complete()`` is intentionally NOT callable
+  here — there is no separate model to call; the orchestrator is the model.
+
+- ``api``: calls the **Anthropic** Messages API with ``ANTHROPIC_API_KEY``.
+- ``grok``: calls the **xAI (Grok)** chat-completions API with ``XAI_API_KEY``
+  (OpenAI-compatible endpoint; uses stdlib ``urllib`` — no extra dependency).
+
+For both API modes a skill's one-shot ``run`` step loops over the pending rows
+calling :func:`complete`. The deterministic prepare/save logic is identical across
+all three modes; only WHO answers the prompt differs. This module centralizes the
+choice so every LLM skill behaves the same.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+from execution.keypool import KeyPool, key_hint
+
+# Rate-limit resilience for OpenAI-compatible hosts (Groq's free tier is a hard
+# tokens-per-minute wall). On HTTP 429 we wait the server-suggested delay and retry.
+MAX_RETRIES_429 = 5
+MAX_BACKOFF_SECS = 30.0
+
+
+def _retry_after_secs(exc: "urllib.error.HTTPError", body: str) -> float:
+    """Seconds to wait before retrying a 429: prefer the Retry-After header, else parse
+    'try again in 12.885s' from the error body, else a 5s default. Capped for safety."""
+    hdr = exc.headers.get("retry-after") if exc.headers else None
+    if hdr:
+        try:
+            return min(float(hdr) + 0.5, MAX_BACKOFF_SECS)
+        except ValueError:
+            pass
+    m = re.search(r"try again in ([\d.]+)\s*s", body)
+    if m:
+        try:
+            return min(float(m.group(1)) + 0.5, MAX_BACKOFF_SECS)
+        except ValueError:
+            pass
+    return 5.0
+
+# Per-provider default model (overridable with LLM_MODEL).
+DEFAULT_MODELS = {
+    "api": "claude-sonnet-4-6",
+    "grok": "grok-4",
+}
+DEFAULT_MODEL = DEFAULT_MODELS["api"]  # back-compat alias
+
+# Providers that call out to a real model (everything else => session mode, the
+# safe/free default — an unknown/typo'd provider falls back to session, never a
+# surprise API charge).
+API_PROVIDERS = frozenset({"api", "grok"})
+
+
+class SessionModeError(RuntimeError):
+    """Raised when api-only code (``complete``) runs under LLM_PROVIDER=session."""
+
+
+def provider() -> str:
+    """Current LLM backend: ``"session"`` (default), ``"api"``, or ``"grok"``."""
+    return (os.environ.get("LLM_PROVIDER") or "session").strip().lower()
+
+
+def is_session_mode() -> bool:
+    """True unless an API-backed provider is selected (``api``/``grok``)."""
+    return provider() not in API_PROVIDERS
+
+
+def model() -> str:
+    """Model id for API mode (``LLM_MODEL`` override, else the provider default)."""
+    return os.environ.get("LLM_MODEL") or DEFAULT_MODELS.get(provider(), DEFAULT_MODEL)
+
+
+def complete(prompt: str, *, system: str = "", max_tokens: int = 2048,
+             model_id: str | None = None, temperature: float | None = None) -> str:
+    """Return the model's text answer to ``prompt`` (API modes only).
+
+    Dispatches on ``LLM_PROVIDER``: ``api`` → Anthropic, ``grok`` → xAI. In
+    ``session`` mode this raises :class:`SessionModeError`: there is no separate
+    model to call — the orchestrator answers the prepared prompts directly and the
+    skill's ``save`` step stores them. Switch ``LLM_PROVIDER=api`` (with
+    ``ANTHROPIC_API_KEY``) or ``LLM_PROVIDER=grok`` (with ``XAI_API_KEY``) to use
+    this path.
+    """
+    p = provider()
+    if p == "api":
+        return _complete_anthropic(prompt, system=system, max_tokens=max_tokens,
+                                   model_id=model_id, temperature=temperature)
+    if p == "grok":
+        return _complete_grok(prompt, system=system, max_tokens=max_tokens,
+                              model_id=model_id, temperature=temperature)
+    raise SessionModeError(
+        f"complete() is unavailable under LLM_PROVIDER={p!r} — the orchestrator "
+        "answers the skill's prepared prompts and the `save` step writes them. "
+        "Set LLM_PROVIDER=api (Anthropic) or LLM_PROVIDER=grok (xAI) to call a model."
+    )
+
+
+def _complete_anthropic(prompt: str, *, system: str, max_tokens: int,
+                        model_id: str | None, temperature: float | None = None) -> str:
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("LLM_PROVIDER=api but ANTHROPIC_API_KEY is not set in .env")
+    try:
+        import anthropic  # lazy: only needed in api mode
+    except ImportError as exc:  # pragma: no cover - env-dependent
+        raise RuntimeError(
+            "LLM_PROVIDER=api needs the `anthropic` package — `pip install anthropic`"
+        ) from exc
+
+    client = _anthropic(anthropic, api_key)
+    kwargs: dict = {
+        "model": model_id or model(),
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if system:
+        kwargs["system"] = system
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    try:
+        resp = client.messages.create(**kwargs)
+    except anthropic.APIError as exc:  # uniform RuntimeError across providers
+        raise RuntimeError(f"Anthropic API error: {exc}") from exc
+    return "".join(
+        block.text for block in resp.content
+        if getattr(block, "type", None) == "text"
+    )
+
+
+_anthropic_client = None  # cached client (reuses the httpx connection pool)
+_anthropic_key: str | None = None
+
+
+def _anthropic(anthropic_mod, api_key: str):
+    """Return a cached Anthropic client, rebuilt only if the key changes."""
+    global _anthropic_client, _anthropic_key
+    if _anthropic_client is None or _anthropic_key != api_key:
+        _anthropic_client = anthropic_mod.Anthropic(api_key=api_key)
+        _anthropic_key = api_key
+    return _anthropic_client
+
+
+def _grok_classify(exc: BaseException) -> str | None:
+    """Map a Grok/OpenAI-compatible HTTP error to a key-health status (for the pool)."""
+    code = getattr(exc, "code", None)
+    if code == 429:
+        return "throttled"          # per-minute TPM — transient, a different key is fresh
+    if code in (401, 403):
+        return "invalid"            # bad/blocked key
+    return None
+
+
+def _grok_pool() -> KeyPool:
+    """Grok/Groq key pool: keys from XAI_API_KEY / GROK_API_KEY (one-or-many) + _1/_2/….
+    A 429'd key is `throttled` (short cooldown, since TPM resets per minute), not exhausted."""
+    root = Path(__file__).resolve().parent.parent
+    state = os.environ.get("LLM_KEYS_STATE") or (root / "data" / "grok_keys.json")
+    return KeyPool(
+        name="grok",
+        env_primaries=["XAI_API_KEY", "GROK_API_KEY"],
+        state_path=state,
+        classify_error=_grok_classify,
+        degraded="throttled",
+        recovery="cooldown",
+        cooldown_secs=90,
+        statuses=("healthy", "unknown", "throttled", "invalid"),
+    )
+
+
+def _grok_send(url: str, body: bytes, key: str, *, timeout: int = 120) -> str:
+    """One chat-completions POST with a specific key; returns raw text or raises HTTPError."""
+    req = urllib.request.Request(
+        url, data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # Some OpenAI-compatible hosts (Groq) sit behind Cloudflare, which 403s the
+            # default Python-urllib UA. Send a normal client UA.
+            "User-Agent": "job-search-pipeline/1.0 (+https://github.com/varakumar01)",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read().decode("utf-8", "replace")
+
+
+def _complete_grok(prompt: str, *, system: str, max_tokens: int,
+                   model_id: str | None, temperature: float | None = None) -> str:
+    """Call the xAI/Grok (or Groq) OpenAI-compatible chat-completions endpoint.
+
+    Multi-key aware: rotates over all configured keys (``XAI_API_KEY``/``GROK_API_KEY``
+    one-or-many, plus ``_1``/``_2``/…) best-health-first. On a 429 it ROTATES to the next
+    key (a fresh key has its own TPM bucket — better than waiting); only when every key is
+    throttled does it wait-and-retry. Endpoint overridable via ``XAI_BASE_URL``. Stdlib only.
+    """
+    pool = _grok_pool()
+    candidates = pool.ordered_candidates()
+    if not candidates:
+        raise RuntimeError("LLM_PROVIDER=grok but no XAI_API_KEY / GROK_API_KEY set in .env")
+    base = (os.environ.get("XAI_BASE_URL") or "https://api.x.ai/v1").rstrip("/")
+    url = f"{base}/chat/completions"
+
+    messages: list[dict] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+    payload: dict = {"model": model_id or model(), "max_tokens": max_tokens,
+                     "messages": messages}
+    if temperature is not None:
+        payload["temperature"] = temperature
+    body = json.dumps(payload).encode("utf-8")
+
+    raw: str | None = None
+    last_err: Exception | None = None
+    throttled: list[tuple[str, float]] = []
+
+    # Pass 1: try each key ONCE, rotating past a throttled/invalid key immediately.
+    for key in candidates:
+        try:
+            raw = _grok_send(url, body, key)
+            pool.mark(key, "healthy")
+            break
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", "replace")
+            safe = detail.replace(key, key_hint(key))  # never surface the raw key
+            if exc.code == 429:
+                pool.mark(key, "throttled", error=safe[:200])
+                throttled.append((key, _retry_after_secs(exc, detail)))
+                if len(candidates) > 1:
+                    print(f"  ⏳ key {key_hint(key)} rate-limited (429) — rotating to next key…",
+                          file=sys.stderr)
+                continue
+            if exc.code in (401, 403):
+                pool.mark(key, "invalid", error=safe[:200])
+                last_err = RuntimeError(f"xAI API error {exc.code}: {safe}")
+                continue
+            raise RuntimeError(f"xAI API error {exc.code}: {safe}") from exc
+        except urllib.error.URLError as exc:  # pragma: no cover - network-dependent
+            raise RuntimeError(f"xAI API request failed: {exc.reason}") from exc
+
+    # Pass 2: every key was throttled → wait the shortest delay and retry that key.
+    if raw is None and throttled:
+        key, wait = min(throttled, key=lambda kw: kw[1])
+        for attempt in range(MAX_RETRIES_429):
+            print(f"  ⏳ all grok keys throttled; waiting {wait:.0f}s then retrying "
+                  f"{key_hint(key)} ({attempt + 1}/{MAX_RETRIES_429})…", file=sys.stderr)
+            time.sleep(min(wait, MAX_BACKOFF_SECS))
+            try:
+                raw = _grok_send(url, body, key)
+                pool.mark(key, "healthy")
+                break
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", "replace")
+                if exc.code == 429:
+                    pool.mark(key, "throttled", error=detail.replace(key, key_hint(key))[:200])
+                    wait = _retry_after_secs(exc, detail)
+                    continue
+                raise RuntimeError(f"xAI API error {exc.code}: "
+                                   f"{detail.replace(key, key_hint(key))}") from exc
+            except urllib.error.URLError as exc:  # pragma: no cover
+                raise RuntimeError(f"xAI API request failed: {exc.reason}") from exc
+
+    if raw is None:
+        # If any key was throttled, that's the operational reason (not a stale 401 from an
+        # invalid key) — surface it accurately.
+        if throttled:
+            raise RuntimeError("all grok keys are rate-limited (429) — retries exhausted; "
+                               "wait ~1 min or add another XAI_API_KEY")
+        raise last_err or RuntimeError("all grok keys are invalid/unauthorized")
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:  # 200 OK but not JSON (proxy/CDN error page)
+        raise RuntimeError(f"xAI returned non-JSON response: {raw[:500]}") from exc
+    try:
+        return data["choices"][0]["message"]["content"] or ""
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError(f"Unexpected xAI response shape: {data!r}") from exc

@@ -1,0 +1,23 @@
+{
+  "_comment": "Your personal application facts. Copy to candidate.json (gitignored) and fill it in. Empty string / null = 'not provided' → it goes to the human review gate at apply time instead of being guessed. Booleans (willing_to_relocate, visa_sponsorship_needed) count as answered even when false.",
+
+  "full_name": "Your Name",
+  "email": "you@example.com",
+  "phone": "",
+  "location": "City, Country",
+  "linkedin": "",
+  "github": "",
+  "current_company": "",
+  "current_title": "",
+
+  "total_experience": "~2 years",
+  "notice_period": "",
+  "current_ctc": "",
+  "expected_ctc": "",
+  "availability_to_start": "",
+
+  "willing_to_relocate": true,
+  "preferred_locations": ["Hyderabad", "Bengaluru", "Remote"],
+  "work_authorization": "",
+  "visa_sponsorship_needed": false
+}

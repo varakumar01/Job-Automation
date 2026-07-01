@@ -1,0 +1,11 @@
+# AI Job-Search & Auto-Apply — Python dependencies
+# Install:  pip install -r requirements.txt  &&  playwright install chromium
+
+apify-client>=1.7        # managed scraping (LinkedIn / Naukri / Indeed actors)
+playwright>=1.45         # browser automation for custom scrapers + apply-agent
+python-dotenv>=1.0       # load secrets from .env
+requests>=2.31           # Apify REST fallback + lightweight web fetches
+anthropic>=0.40          # OPTIONAL: only when LLM_PROVIDER=api (session mode needs nothing)
+
+# NOTE: the data store uses the Python stdlib (sqlite3, json) — no dependency.
+# NOTE: profile-matcher is pure stdlib too (deterministic scoring, no LLM).
