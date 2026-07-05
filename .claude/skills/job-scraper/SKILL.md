@@ -87,17 +87,35 @@ table, `--reset-keys all|exhausted|invalid|<hint>` clears flags.
 
 A new job source = **one file**, no edits anywhere else (registry auto-discovers it).
 
-1. **Apify-backed portal:** copy an existing `plugins/<portal>.py` (e.g. `indeed.py`),
+1. **ATS platform** (Greenhouse/Lever/Workday/etc. — covers ANY company on that
+   platform): copy an existing `plugins/<platform>.py` (e.g. `greenhouse.py`), point it
+   at the platform's public JSON endpoint, and configure companies via a `.env`
+   `<PLATFORM>_COMPANIES` list (`slug` or `slug:Display Name`). Reuse `_ats_util.py`'s
+   `parse_companies`/`round_robin`/`post_json` — don't reinvent them. To add a COMPANY
+   to an already-built platform, just add its slug to the existing `.env` list — no new
+   file needed. See `docs/job_portals.md` for verified endpoint patterns per platform.
+2. **Apify-backed portal:** copy an existing `plugins/<portal>.py` (e.g. `indeed.py`),
    set a unique `name` (this is also `jobs.source`), point `actor_id(...)` at the new
    actor, and map its output fields with `first_text(...)`. Multi-key rotation, cost
    caps, and normalization come for free via `_apify`.
-2. **Custom (non-Apify) portal:** copy `plugins/_custom_template.py` to `<site>.py`
-   (drop the leading underscore — underscore files are skipped), rename the class, set
-   `name`, and implement `is_available()` (logged-in Playwright session present?) +
-   `fetch()` (drive the page, normalize rows to `Job`). Uses your own logged-in browser
-   session from `PLAYWRIGHT_USER_DATA_DIR` (PLAN §6 — no stored credentials).
-3. **Verify discovery:** `scrape.py --list` should show the new `name`; then live-smoke
+3. **Custom (non-ATS) portal** — a single bespoke company site, no known ATS
+   underneath: copy an existing custom plugin (e.g. `synopsys.py`) as the template
+   rather than `_custom_template.py` (that scaffold's `is_available()` wrongly assumes
+   a *logged-in* session via `PLAYWRIGHT_USER_DATA_DIR` — wrong model for a public
+   career page, which needs no login at all). Use `_career_util.py`'s fetch-strategy
+   ladder: `fetch_html`/`fetch_json` first, then `extract_next_data`/`extract_ld_json`/
+   `extract_window_var` (JSON blob in the HTML — covers most sites without a browser),
+   and only fall back to `render_html()` (real headless Chromium, no persistent
+   profile) if the page genuinely needs JS to render its job list. Gate
+   `is_available()` on `playwright_available()` if using the render fallback, not on
+   `PLAYWRIGHT_USER_DATA_DIR`.
+4. **Verify discovery:** `scrape.py --list` should show the new `name`; then live-smoke
    with a tiny `--limit`. Document the addition in PLAN.md §4/§10.
+5. **Refresh the supported-companies list:** any time a company is added to a
+   `.env` `*_COMPANIES` var (or a new custom single-company plugin ships), run
+   `python3 .claude/skills/job-scraper/scripts/list_companies.py` to regenerate
+   `docs/supported_companies.md` — it reads live from `.env`, so it can't drift if
+   you remember to re-run it.
 
 Rules: the registry skips `base`, `registry`, `__init__`, and any `_`-prefixed module,
 and only registers `JobSourcePlugin` subclasses defined in their own module; duplicate
