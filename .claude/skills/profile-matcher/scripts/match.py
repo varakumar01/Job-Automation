@@ -29,6 +29,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from data import store  # noqa: E402
+from execution.log import add_verbose_arg, apply_verbosity, vprint  # noqa: E402
 
 DEFAULT_RESUME = ROOT / "varakumar_resume.tex"
 
@@ -240,6 +241,8 @@ def run(resume_path: Path, dry_run: bool, rescore: bool = False) -> int:
     for job, res in results:
         print(f"  {res['score']:>5.1f}  [{res['role_label']:<22}] "
               f"{(job.get('title') or '')[:42]:<42} @ {(job.get('company') or '')[:22]} ({job['source']})")
+        vprint(1, f"         matched={res['matched'][:6]}  missing={res['missing'][:4]}")
+        vprint(2, f"         breakdown={res['breakdown']}")
     if not dry_run:
         out = store.export_json()
         print(f"\n✓ exported → {out}")
@@ -267,7 +270,9 @@ def main(argv=None) -> int:
     ap.add_argument("--show", action="store_true", help="print current matched ranking and exit")
     ap.add_argument("--rescore", action="store_true",
                     help="recompute already-matched jobs in place (no status change)")
+    add_verbose_arg(ap)
     args = ap.parse_args(argv)
+    apply_verbosity(args)
 
     store.init_db()
     if args.show:

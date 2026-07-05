@@ -34,6 +34,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(ROOT / ".env")  # secrets before plugins read os.environ
 
 from data import store  # noqa: E402
+from execution.log import add_verbose_arg, apply_verbosity, vprint  # noqa: E402
 from plugins.registry import discover_plugins, get_plugin  # noqa: E402
 import _apify_keys  # noqa: E402 — registry put the plugins dir on sys.path
 
@@ -60,6 +61,7 @@ def _show_keys() -> int:
 
 def _run_one(plugin, query: str, limit: int, location: str | None) -> dict:
     print(f"\n▶ {plugin.name}: query={query!r} limit={limit} location={location!r}")
+    vprint(1, f"  plugin class: {type(plugin).__name__}  available={plugin.is_available()}")
     # Pass location only if the plugin's fetch() actually accepts it.
     accepts_location = "location" in inspect.signature(plugin.fetch).parameters
     if accepts_location:
@@ -70,6 +72,7 @@ def _run_one(plugin, query: str, limit: int, location: str | None) -> dict:
     counts = store.upsert_jobs(rows) if rows else {"found": 0, "new": 0, "updated": 0}
     store.log_run("scrape", source=plugin.name, query=query, counts=counts)
     print(f"  fetched={len(rows)}  new={counts['new']}  updated={counts['updated']}")
+    vprint(2, f"  sample urls: {[r.get('url','') for r in rows[:3]]}")
     return counts
 
 
@@ -85,7 +88,9 @@ def main(argv=None) -> int:
                     help="show Apify key health (which keys are usable/exhausted/invalid) and exit")
     ap.add_argument("--reset-keys", metavar="WHICH", default=None,
                     help="reset key health to 'unknown': 'all' | 'exhausted' | 'invalid' | a key hint tail")
+    add_verbose_arg(ap)
     args = ap.parse_args(argv)
+    apply_verbosity(args)
 
     if args.keys:
         return _show_keys()

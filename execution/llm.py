@@ -106,12 +106,29 @@ def complete(prompt: str, *, system: str = "", max_tokens: int = 2048,
         return _complete_anthropic(prompt, system=system, max_tokens=max_tokens,
                                    model_id=model_id, temperature=temperature)
     if p == "grok":
-        return _complete_grok(prompt, system=system, max_tokens=max_tokens,
-                              model_id=model_id, temperature=temperature)
+        backup = os.environ.get("LLM_BACKUP_MODEL", "").strip()
+        try:
+            return _complete_grok(prompt, system=system, max_tokens=max_tokens,
+                                  model_id=model_id, temperature=temperature)
+        except Exception as exc:
+            effective = model_id or model()
+            msg = str(exc).lower()
+            # Only retry with the backup for model-specific failures (model not found,
+            # content filter, overload). Skip the retry for infrastructure errors that
+            # switching models cannot fix — rate limits (429), auth (401/403), and network.
+            _infra_error = ("429" in msg or "rate-limit" in msg or
+                            "401" in msg or "403" in msg or "unauthorized" in msg or
+                            "request failed" in msg)
+            if backup and backup != effective and not _infra_error:
+                print(f"  ⚠ model {effective!r} failed ({type(exc).__name__}); "
+                      f"retrying with backup {backup!r}…", file=sys.stderr)
+                return _complete_grok(prompt, system=system, max_tokens=max_tokens,
+                                      model_id=backup, temperature=temperature)
+            raise
     raise SessionModeError(
         f"complete() is unavailable under LLM_PROVIDER={p!r} — the orchestrator "
         "answers the skill's prepared prompts and the `save` step writes them. "
-        "Set LLM_PROVIDER=api (Anthropic) or LLM_PROVIDER=grok (xAI) to call a model."
+        "Set LLM_PROVIDER=api (Anthropic) or LLM_PROVIDER=grok (xAI/NVIDIA/Groq) to call a model."
     )
 
 
@@ -220,9 +237,16 @@ def _complete_grok(prompt: str, *, system: str, max_tokens: int,
     base = (os.environ.get("XAI_BASE_URL") or "https://api.x.ai/v1").rstrip("/")
     url = f"{base}/chat/completions"
 
+    # If LLM_SYSTEM_PREFIX is set (e.g. "detailed thinking off" for NVIDIA/Nemotron),
+    # prepend it to the system prompt. This disables reasoning-mode on Nemotron models
+    # so the full token budget goes to the actual JSON output, not <think> traces.
+    # The prefix is a no-op for non-reasoning models (Kimi, Mistral, etc.).
+    prefix = (os.environ.get("LLM_SYSTEM_PREFIX") or "").strip()
+    effective_system = (f"{prefix}\n{system}".strip() if prefix else system)
+
     messages: list[dict] = []
-    if system:
-        messages.append({"role": "system", "content": system})
+    if effective_system:
+        messages.append({"role": "system", "content": effective_system})
     messages.append({"role": "user", "content": prompt})
     payload: dict = {"model": model_id or model(), "max_tokens": max_tokens,
                      "messages": messages}

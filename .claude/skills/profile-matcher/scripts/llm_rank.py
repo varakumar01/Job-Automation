@@ -36,6 +36,7 @@ except ImportError:
 
 from data import store  # noqa: E402
 from execution import eligibility, llm  # noqa: E402
+from execution.log import add_verbose_arg, apply_verbosity, vprint  # noqa: E402
 from execution.profile import candidate_profile  # noqa: E402
 
 JD_SNIPPET_CHARS = 700  # per-job JD context sent to the model (keeps the batch token-bound)
@@ -73,7 +74,8 @@ SYSTEM_PROMPT = (
     "first. Each 'reason' must be SPECIFIC and cite the jd DUTIES (e.g. 'builds Python "
     "automation + CI/CD', 'Azure cloud security controls', 'Wintel patching, off-profile', "
     "'duties are senior/lead scope', 'fluff jd, fit unverifiable'). No generic phrases like "
-    "'good match', 'relevant skills', or ones that just restate the title. Return ONLY JSON."
+    "'good match', 'relevant skills', or ones that just restate the title. "
+    "Return ONLY the JSON object — no <think> tags, no markdown fences, no preamble."
 )
 
 
@@ -108,7 +110,10 @@ def _snippet(job: dict) -> str:
 
 
 def _extract_json(text: str) -> dict:
-    text = text.strip()
+    """Strip <think>…</think> traces (e.g. Nemotron), then extract first JSON object."""
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    if "<think>" in text:  # unclosed tag: drop everything from it onward
+        text = text[:text.index("<think>")].strip()
     fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
     if fenced:
         text = fenced.group(1)
@@ -146,9 +151,11 @@ def llm_rank(jobs: list[dict], profile: dict) -> list[dict]:
         "jobs": [{"id": j["id"], "title": j.get("title"), "company": j.get("company"),
                   "location": j.get("location"), "jd": _snippet(j)} for j in jobs],
     }
+    payload_str = json.dumps(payload, ensure_ascii=False)
+    vprint(2, f"\n  [vv] rank payload ({len(payload_str)} chars):\n{payload_str[:600]}…")
     # temperature=0 → stable, repeatable ranking (the whole point of a reranker).
-    reply = llm.complete(json.dumps(payload, ensure_ascii=False),
-                         system=SYSTEM_PROMPT, max_tokens=2000, temperature=0)
+    reply = llm.complete(payload_str, system=SYSTEM_PROMPT, max_tokens=2000, temperature=0)
+    vprint(2, f"  [vv] reply: {reply[:400]}…")
     data = _extract_json(reply)
     ranking = data.get("ranking") if isinstance(data, dict) else None
     if not isinstance(ranking, list):
@@ -183,7 +190,9 @@ def main(argv=None) -> int:
     ap.add_argument("--jobs", default=None, help="comma-separated job ids")
     ap.add_argument("--eligible", action="store_true", help="only eligible best-match jobs")
     ap.add_argument("--save", action="store_true", help="persist llm_score/llm_reason to store")
+    add_verbose_arg(ap)
     args = ap.parse_args(argv)
+    apply_verbosity(args)
 
     store.init_db()
     jobs = _shortlist(args.status, args.limit, store.parse_ids(args.jobs), args.eligible)

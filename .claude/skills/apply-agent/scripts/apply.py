@@ -37,6 +37,7 @@ if str(ROOT) not in sys.path:
 
 from data import store  # noqa: E402
 from execution import candidate  # noqa: E402
+from execution.log import add_verbose_arg, apply_verbosity  # noqa: E402
 
 # Conservative default batch size (PLAN §6: small batches, human-paced). The apply
 # step is deliberately slow and supervised — do not raise this without a §9 decision.
@@ -202,6 +203,7 @@ def show() -> int:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Human-in-the-loop apply spine (never submits)")
+    add_verbose_arg(ap)
     sub = ap.add_subparsers(dest="cmd")
 
     p_pk = sub.add_parser("packet", help="build apply packet(s) for ready jobs")
@@ -219,6 +221,7 @@ def main(argv=None) -> int:
     p_log.add_argument("--note", default=None)
 
     args = ap.parse_args(argv)
+    apply_verbosity(args)
     store.init_db()
     if args.cmd == "packet":
         return packet(args.limit, args.job, args.source,

@@ -149,16 +149,28 @@ def upsert_jobs(jobs: Iterable[dict[str, Any]]) -> dict[str, int]:
     return {"found": found, "new": new, "updated": updated}
 
 
-def get_jobs(status: str | None = None, limit: int | None = None) -> list[dict[str, Any]]:
-    """Return jobs (optionally filtered by status), oldest first."""
+def get_jobs(status: str | None = None, limit: int | None = None,
+             order: str = "id") -> list[dict[str, Any]]:
+    """Return jobs (optionally filtered by status).
+
+    order:
+      "id"    — oldest first (insertion order, the safe default for writers/upsert callers).
+      "score" — best first: COALESCE(llm_score, match_score) DESC, then newest id DESC.
+                Use this for display and prep batches so higher-rated jobs surface first.
+    """
     if status is not None and status not in VALID_STATUSES:
         raise ValueError(f"unknown status {status!r}; valid: {sorted(VALID_STATUSES)}")
+    if order not in ("id", "score"):
+        raise ValueError(f"unknown order {order!r}; valid: 'id', 'score'")
     sql = "SELECT * FROM jobs"
     params: list[Any] = []
     if status is not None:
         sql += " WHERE status = ?"
         params.append(status)
-    sql += " ORDER BY id ASC"
+    if order == "score":
+        sql += " ORDER BY COALESCE(llm_score, match_score) DESC, id DESC"
+    else:
+        sql += " ORDER BY id ASC"
     if limit is not None:
         sql += " LIMIT ?"
         params.append(limit)

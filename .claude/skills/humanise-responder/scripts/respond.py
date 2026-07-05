@@ -47,6 +47,7 @@ except ImportError:
 from data import store  # noqa: E402
 from execution import candidate  # noqa: E402
 from execution import llm  # noqa: E402
+from execution.log import add_verbose_arg, apply_verbosity, vprint  # noqa: E402
 
 DEFAULT_MASTER = ROOT / "varakumar_resume.tex"
 TMP_DIR = ROOT / ".tmp" / "humanise-responder"
@@ -90,7 +91,7 @@ SYSTEM_PROMPT = (
     '  "screening_todo": ["facts only the candidate can supply — e.g. notice period, '
     'expected CTC, current CTC, relocation/visa — list them; do NOT fabricate values"]\n'
     "}\n"
-    "Return ONLY the JSON object."
+    "Return ONLY the JSON object — no <think> tags, no markdown fences, no preamble."
 )
 
 
@@ -197,8 +198,11 @@ def _normalize_answers(raw: dict, gaps: list[str] | None = None) -> dict:
 
 def _extract_json(text: str) -> dict:
     """Parse the first complete JSON object from a model reply, tolerating ``` fences
-    and trailing prose (even prose containing braces) via a string-aware brace scan."""
-    text = text.strip()
+    and trailing prose (even prose containing braces) via a string-aware brace scan.
+    Strips <think>…</think> reasoning traces emitted by some models (e.g. Nemotron)."""
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    if "<think>" in text:  # unclosed tag: drop everything from it onward
+        text = text[:text.index("<think>")].strip()
     fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
     if fenced:
         text = fenced.group(1)
@@ -229,12 +233,14 @@ def _extract_json(text: str) -> dict:
 
 def _pending_jobs(limit: int | None, ids: list[int] | None = None) -> list[dict]:
     """Tailored jobs without answers yet (the resumable work queue).
-    `ids` (from `--jobs`) restricts to those specific job ids."""
+    `ids` (from `--jobs`) restricts to those specific job ids.
+    Sorted best-score first so a limited run processes the highest-rated jobs."""
     out = [j for j in store.get_jobs(status="tailored")
            if not (j.get("answers_json") or "").strip()]
     if ids:
         keep = set(ids)
         out = [j for j in out if j["id"] in keep]
+    out.sort(key=lambda j: -(j["llm_score"] if j.get("llm_score") is not None else (j.get("match_score") or 0)))
     return out[:limit] if limit is not None else out
 
 
@@ -339,9 +345,11 @@ def run(limit: int | None, master_path: Path, ids: list[int] | None = None) -> i
     print(f"LLM_PROVIDER={llm.provider()} model={llm.model()} — answering {len(jobs)} job(s).\n")
     done = failed = 0
     for j in jobs:
+        prompt = _job_prompt(j, _brief_of(j), profile, facts)
+        vprint(2, f"\n  [vv] respond prompt ({len(prompt)} chars):\n{prompt[:600]}…")
         try:
-            reply = llm.complete(_job_prompt(j, _brief_of(j), profile, facts),
-                                 system=SYSTEM_PROMPT, max_tokens=1800)
+            reply = llm.complete(prompt, system=SYSTEM_PROMPT, max_tokens=1800)
+            vprint(2, f"  [vv] reply: {reply[:400]}…")
             answers = _normalize_answers(_extract_json(reply), gaps)
         except (json.JSONDecodeError, ValueError) as exc:
             print(f"  ✗ job {j['id']}: bad model output — {exc}", file=sys.stderr)
@@ -354,6 +362,7 @@ def run(limit: int | None, master_path: Path, ids: list[int] | None = None) -> i
         _store_answers(j["id"], answers)
         done += 1
         print(f"  ✓ job {j['id']}: {(j.get('title') or '')[:40]} → ready")
+        vprint(1, f"    screening_todo: {answers.get('screening_todo', [])}")
     store.export_json()
     print(f"\nanswered {done}, {failed} failed. {store.stats()}")
     return 0 if failed == 0 else 1
@@ -384,7 +393,9 @@ def main(argv=None) -> int:
     ap.add_argument("--jobs", default=None, help="comma-separated job ids to limit to")
     ap.add_argument("--master", default=str(DEFAULT_MASTER))
     ap.add_argument("--from", dest="from_path", default=None, help="answers file for `save`")
+    add_verbose_arg(ap)
     args = ap.parse_args(argv)
+    apply_verbosity(args)
 
     store.init_db()
     cmd = args.cmd

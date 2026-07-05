@@ -44,6 +44,7 @@ except ImportError:  # python-dotenv optional; env may already be exported
 from data import store  # noqa: E402
 from execution import eligibility  # noqa: E402
 from execution.eligibility import classify, MIN_PROFILE_SCORE  # noqa: E402
+from execution.log import vprint  # noqa: E402
 
 PY = sys.executable
 SKILLS = ROOT / ".claude" / "skills"
@@ -70,6 +71,26 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 DEEPSEEK_BASE = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-chat"
 
+# NVIDIA NIM — OpenAI-compatible, 100+ open-weight models, free-tier ~40 req/min.
+# Reuses the `grok` provider path with NVIDIA's base/key/model. Needs NVIDIA_API_KEY (nvapi-…).
+# Model selection (benchmarked 2026-07-04 on real ranking + JD-understand prompts):
+#   Primary   moonshotai/kimi-k2.6 — best seniority-rule calibration (6/6 rubric), bare JSON,
+#             1.6 s rank / 4.7 s understand. Correct absolute scores matter because
+#             eligibility.py gates on absolute 60/70 thresholds.
+#   Backup    mistralai/mistral-large-3-675b-instruct-2512 — fastest (1.3/2.8 s), reliable,
+#             fires only on model-specific errors; strips fenced JSON automatically.
+#   Prev. default (nvidia/llama-3.3-nemotron-super-49b-v1) — latency spikes 93 s on longer
+#             outputs; kept as LLM_SYSTEM_PREFIX guard below prevents its reasoning bleed.
+#   Rejected  meta/llama-3.3-70b-instruct, deepseek-v4-pro — 150 s timeouts on free tier.
+NVIDIA_BASE = "https://integrate.api.nvidia.com/v1"
+NVIDIA_MODEL = "moonshotai/kimi-k2.6"
+NVIDIA_BACKUP_MODEL = "mistralai/mistral-large-3-675b-instruct-2512"
+# Sent as the FIRST line of the system prompt on the NVIDIA path to disable Nemotron
+# reasoning-mode (which defaults ON and burns the whole token budget on <think> instead of
+# producing JSON). Harmless for non-reasoning models like Kimi/Mistral; protects any
+# Nemotron call. Set LLM_SYSTEM_PREFIX="" in .env to suppress if you switch models.
+NVIDIA_SYSTEM_PREFIX = "detailed thinking off"
+
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
@@ -77,30 +98,19 @@ def _run(script: Path, *args: str, env: dict | None = None) -> int:
     """Run a skill script as a subprocess, streaming its output. Returns exit code."""
     cmd = [PY, str(script), *args]
     print(f"\n$ {script.name} {' '.join(args)}")
-    proc = subprocess.run(cmd, cwd=str(ROOT), env={**os.environ, **(env or {})})
+    merged = {**os.environ, **(env or {})}
+    vprint(2, f"  [vv] env overrides: {list((env or {}).keys())}")
+    proc = subprocess.run(cmd, cwd=str(ROOT), env=merged)
     return proc.returncode
 
 
-def _loc_rank(loc: str | None) -> int:
-    l = (loc or "").lower()
-    if "hyderabad" in l:
-        return 0
-    if "bengaluru" in l or "bangalore" in l:
-        return 1
-    return 2
-
-
 def _ordered(jobs: list[dict]) -> list[dict]:
-    """Preferred order: Hyderabad→Bengaluru→rest, then newest posted, then best score."""
-    return sorted(jobs, key=lambda j: (_loc_rank(j.get("location")),
-                                       _posted_key(j), -(j.get("match_score") or 0)))
-
-
-def _posted_key(job: dict):
-    # Newest-first: posted_at descending. Strings sort lexicically; ISO/relative
-    # values vary, so fall back to id (insertion order ~ scrape order = newest-first
-    # since we scrape sortBy=DD). Negative id → newer first.
-    return -int(job.get("id") or 0)
+    """Sort by best score first (llm_score if present, else match_score), newest id tiebreak.
+    Intended to be called on an already-classified subset."""
+    def _score(j):
+        s = j.get("llm_score")
+        return s if s is not None else (j.get("match_score") or 0)
+    return sorted(jobs, key=lambda j: (-_score(j), -(j.get("id") or 0)))
 
 
 # ── commands ───────────────────────────────────────────────────────────────
@@ -132,7 +142,13 @@ def cmd_search(args) -> int:
 
 def _auto_reject() -> int:
     """Move off-profile `matched` jobs to `rejected` so the LLM never ranks/preps them
-    (efficiency: keeps token spend on relevant jobs only). Returns how many were rejected."""
+    (efficiency: keeps token spend on relevant jobs only). Returns how many were rejected.
+
+    Only HARD-NOs are rejected: non-security titles, genuine scope/seniority gaps (manages
+    people / 6+ yr requirements), or scores below the stretch floor. Security roles that are
+    merely a low-fit stretch are KEPT (classify == 'stretch') so the user can opt in to a
+    heavier résumé rewrite rather than having viable roles silently dropped.
+    """
     off = [j for j in store.get_jobs(status="matched") if classify(j) == "off_profile"]
     for j in off:
         store.update_job(j["id"], status="rejected")
@@ -191,9 +207,15 @@ def cmd_rejected(args) -> int:
 
 def _print_lists(raw: bool = False) -> None:
     jobs = store.get_jobs(status="matched")
-    eligible = _ordered([j for j in jobs if classify(j) == "eligible"])
-    needs = _ordered([j for j in jobs if classify(j) == "needs_mod"])
-    off = [j for j in jobs if classify(j) == "off_profile"]
+    # classify() runs has_scope_gap() (regex) + coverage() (JSON parse) per job —
+    # compute once and bucket to avoid 4× redundant work across the list comprehensions.
+    tiers: dict[str, list] = {"eligible": [], "needs_mod": [], "stretch": [], "off_profile": []}
+    for j in jobs:
+        tiers.setdefault(classify(j), []).append(j)
+    eligible = _ordered(tiers["eligible"])
+    needs = _ordered(tiers["needs_mod"])
+    stretch = _ordered(tiers["stretch"])
+    off = tiers["off_profile"]
 
     def _row(j):
         # Show the job id + posting link so each row is directly actionable
@@ -228,8 +250,18 @@ def _print_lists(raw: bool = False) -> None:
     for j in needs:
         print(_row(j))
 
-    print(f"\n({len(off)} off-profile / weak matches still at 'matched' — not security roles "
-          f"or score < {MIN_PROFILE_SCORE:.0f}; run `main.py reject` to park them.)")
+    # LIST 4 — stretch roles: security-on-profile but low fit / pentest / title-senior-only.
+    # These need a heavier résumé rewrite; the human opts in (`prep --stretch`).
+    print(f"\n🧗 STRETCH — security-adjacent, low fit, applyable with a heavy rewrite ({len(stretch)}):")
+    if stretch:
+        for j in stretch:
+            print(_row(j))
+        print(f"   Prep these with: `main.py prep --stretch --llm <provider>`")
+    else:
+        print("   (none — run `main.py reject` to park hard-nos if needed)")
+
+    print(f"\n({len(off)} off-profile hard-nos still at 'matched' — non-security / scope gap / "
+          f"score < {eligibility.STRETCH_FLOOR:.0f}; run `main.py reject` to park them.)")
 
 
 def cmd_lists(args) -> int:
@@ -250,8 +282,23 @@ def _llm_env(provider: str) -> dict:
         env = {"LLM_PROVIDER": "grok",
                "XAI_BASE_URL": os.environ.get("DEEPSEEK_BASE_URL") or DEEPSEEK_BASE,
                "LLM_MODEL": os.environ.get("LLM_MODEL") or DEEPSEEK_MODEL,
-               "XAI_API_KEY": os.environ.get("DEEPSEEK_API_KEY") or ""}
+               "XAI_API_KEY": os.environ.get("DEEPSEEK_API_KEY") or "",
+               "GROK_API_KEY": ""}  # clear alias so _grok_pool can't discover a stale Groq key
         return env
+    if provider == "nvidia":
+        # OpenAI-compatible NIM endpoint → reuse the grok backend with NVIDIA's base/key/model.
+        # ALWAYS set both XAI_API_KEY and GROK_API_KEY explicitly (to "" if missing) so neither
+        # Groq key alias can leak to NVIDIA's server via the subprocess env merge.
+        # LLM_BACKUP_MODEL is read by execution/llm.py complete() for a one-shot fallback.
+        # LLM_SYSTEM_PREFIX is prepended to every system prompt so Nemotron reasoning-mode
+        # stays OFF (prevents <think> from eating the whole token budget on reasoning models).
+        return {"LLM_PROVIDER": "grok",
+                "XAI_BASE_URL": os.environ.get("NVIDIA_BASE_URL") or NVIDIA_BASE,
+                "LLM_MODEL": os.environ.get("LLM_MODEL") or NVIDIA_MODEL,
+                "LLM_BACKUP_MODEL": os.environ.get("LLM_BACKUP_MODEL") or NVIDIA_BACKUP_MODEL,
+                "XAI_API_KEY": os.environ.get("NVIDIA_API_KEY") or "",
+                "GROK_API_KEY": "",  # clear alias so _grok_pool can't discover a stale Groq key
+                "LLM_SYSTEM_PREFIX": os.environ.get("LLM_SYSTEM_PREFIX", NVIDIA_SYSTEM_PREFIX)}
     if provider == "api":
         return {"LLM_PROVIDER": "api"}
     return {"LLM_PROVIDER": "session"}
@@ -281,7 +328,8 @@ def cmd_prep(args) -> int:
                   "`main.py rank --llm grok --eligible --save` first, then retry --llm-best.")
             return 0
     wanted = {c for c, on in (("eligible", args.eligible),
-                              ("needs_mod", args.needs_mod)) if on}
+                              ("needs_mod", args.needs_mod),
+                              ("stretch", args.stretch)) if on}
     if ids is None and wanted:
         ids = [j["id"] for j in store.get_jobs(status="matched") if classify(j) in wanted]
         if not ids:
@@ -294,15 +342,19 @@ def cmd_prep(args) -> int:
     print(f"Prep via --llm={args.llm} (model {env.get('LLM_MODEL', 'default')}) — {scope}.")
 
     # NOTE the user about non-best jobs whose résumé will be LLM-MODIFIED. needs_mod jobs
-    # are tailored by default; with --modify-resume, eligible jobs get modified too. The
-    # master résumé is never touched — only per-job copies (resume-tailor, §9).
+    # are tailored by default; with --modify-resume, eligible jobs get modified too; with
+    # --stretch, stretch jobs get a heavier tailoring pass. Master résumé never touched.
     in_scope = [j for j in store.get_jobs(status="matched")
                 if id_set is None or j["id"] in id_set]
     nonbest = [j for j in in_scope if classify(j) == "needs_mod"]
+    stretch_jobs = [j for j in in_scope if classify(j) == "stretch"]
     if nonbest:
         print(f"  ⚠ NOTE: {len(nonbest)} NON-best-match job(s) need tailoring — they'll be "
               f"applied with an LLM-MODIFIED résumé (master untouched). Review each tailored "
               f"PDF before submitting.")
+    if stretch_jobs:
+        print(f"  🧗 NOTE: {len(stretch_jobs)} STRETCH job(s) — low-fit but security-adjacent; "
+              f"require a heavier résumé rewrite. Review PDFs carefully before submitting.")
     if args.modify_resume:
         elig_n = sum(1 for j in in_scope if classify(j) == "eligible")
         if elig_n:
@@ -325,7 +377,7 @@ def cmd_prep(args) -> int:
         if elig:
             print(f"  {len(elig)} eligible job(s) → master résumé as-is")
             _run(TAILOR, "--no-modify", "--jobs", ",".join(map(str, elig)))
-        _run(TAILOR, "run", *lim, *jobs_arg, env=env)  # the rest (needs_mod) get tailored
+        _run(TAILOR, "run", *lim, *jobs_arg, env=env)  # the rest (needs_mod + stretch) get tailored
 
     # 3) Answers for every tailored job in scope.
     if _run(RESPOND, "run", *lim, *jobs_arg, env=env) != 0:
@@ -528,75 +580,114 @@ def cmd_rank(args) -> int:
 HELP_DESC = """\
 main.py — one terminal entrypoint for the AI job-search pipeline.
 
-Write a command bare (`apply`) or as a flag (`--apply`); they're equivalent.
-Options always take `--`. The pipeline runs left to right:
+Commands work bare or as flags:  main.py search  ==  main.py --search
+Pipeline runs left to right:
 
-    search → lists → prep → apply → log → report
+    search → lists → [rank] → prep → apply → log → report
 
-PIPELINE COMMANDS
-  --search    Scrape portals (newest-first) and rank what's found.
-              --queries "a,b"     roles to search, comma-separated
-              --locations "x,y"   cities, comma-separated
-              --days N            recency window (LinkedIn); 0 = no filter
-              --limit N           results per query×location (default 30)
-              --source NAME       portal to scrape (default linkedin)
-  --lists     Triage matched jobs into three lists (scraped / best / needs-mod).
-              --raw               also dump the full scraped pool, with tags
-  --prep      Write JD briefs, résumé and answers for jobs, advancing to 'ready'.
-              --llm claude|grok|deepseek|api  who writes: claude = this session (free),
-                                      grok = Groq (free, rate-limited), deepseek = DeepSeek
-                                      (paid, cheap, no TPM wall), api = Anthropic
-              --eligible          only the best-match (eligible) jobs (keyword score)
-              --llm-best          only jobs the GROK reranker scored best — the tuned
-                                  ranking picks, not the keyword score (run
-                                  `rank --llm grok --eligible --save` first)
-              --needs-mod         only non-best jobs that need résumé tailoring
-                                  (a NOTE warns you these use a modified résumé)
-              --jobs "1,2,3"      only these job ids
-              --modify-resume     tailor EVERY résumé incl. eligible (never required;
-                                  needs-mod jobs are tailored by default)
-              --limit N           cap how many jobs are processed
-  --apply     Print apply packets (best-matched first) for you to submit.
-              --source NAME       only jobs from this portal
-              --query TEXT        only jobs whose title/company contains TEXT
-              --jobs "1,2,3"      only these job ids
-              --limit N           max packets (default 3)
-  --log       Record an outcome after you submit a job.
-              --job N             job id                       (required)
-              --outcome WHICH     applied | skipped | failed   (required)
-              --note "..."        free-text note
-              --screenshot PATH   path to a review screenshot
-  --applied   Show the log of jobs already applied / skipped / failed.
-  --reject    Park off-profile / non-relevant jobs in the 'rejected' list (search does
-              this automatically; run manually to re-park after tweaks).
-              --by-llm            reject jobs the GROK reranker scored below the cutoff
-                                  (the tuned ranking filters duds; run rank --save first)
-  --rejected  Show the rejected (non-relevant) list — excluded from ranking/prep.
-  --report    Build the dashboard and save artifacts under applications/<id>/.
+━━━ SCRAPE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  search        Scrape portals, score every result, auto-reject hard-nos.
+    --queries   Comma-separated role keywords  (e.g. "detection eng,appsec")
+    --locations Comma-separated cities         (e.g. "Bangalore,Remote")
+    --source    Portal plugin: linkedin | naukri | indeed | remoteok | all
+    --days N    Recency window (LinkedIn recency filter); omit = no filter
+    --limit N   Max results per query×location  (default 30)
 
-CONTROL PANEL (read-only, safe anytime)
-  --keys      Apify key health; reset with --reset all|exhausted|invalid|<hint>.
-              --llm               show Grok/Groq key health instead (multi-key auto-rotates
-                                  on a 429); --reset all|throttled|invalid|<hint>.
-  --sources   List the job portals/plugins available right now.
-  --stats     Pipeline funnel: how many jobs sit at each stage.
-  --rank      Ranked match list (best fits first).
-              --llm grok|deepseek|api   LLM rerank by résumé fit (default: python matcher)
-              --limit N           shortlist size to rerank (default 20)
-              --eligible / --jobs "1,2"   restrict which jobs are ranked
-              --save              persist llm_score/llm_reason to the store
+━━━ TRIAGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  lists         Show the four classified tiers, best-score-first in each.
+    --raw       Also dump every job row with its classification tag
 
-Tip: `main.py <command> -h` also prints that one command's flags.
+  stats         Pipeline funnel — count of jobs at each status.
+
+  rank          LLM rerank matched jobs by résumé fit (supplements keyword score).
+    --llm       Provider: nvidia | grok | deepseek | api  (default: python scorer)
+    --limit N   Shortlist size to rerank  (default 20)
+    --eligible  Rank only eligible best-match jobs
+    --jobs "…"  Rank only these comma-separated job ids
+    --save      Persist llm_score + llm_reason to the store
+
+  reject        Park hard-nos in 'rejected' so they never re-appear in lists/prep.
+                (search does this automatically; re-run after score tweaks.)
+    --by-llm    Reject jobs the LLM reranker scored below the cutoff instead
+                (needs `rank --save` first)
+
+  rejected      Show the rejected list — excluded from all ranking and prep.
+
+━━━ PREP ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  prep          Write JD briefs → tailor résumé → draft answers. Advances to 'ready'.
+    --llm       Who writes: nvidia | grok | deepseek | api | claude
+                  nvidia   — NVIDIA NIM (Kimi-k2.6 primary, Mistral-large-3 backup)
+                  grok     — Groq free tier (rate-limited)
+                  deepseek — DeepSeek API (paid, cheap, no TPM wall)
+                  api      — Anthropic API
+                  claude   — this Claude Code session (free, manual)
+
+    JOB SELECTION (pick one, or omit for all pending):
+    --eligible      ✅ Best-match jobs only (apply with master résumé as-is)
+    --needs-mod     ✏️  Jobs that need résumé tailoring (modified copy, master untouched)
+    --stretch       🧗 Stretch jobs — low-fit security roles needing a heavy rewrite;
+                       you opt in and review each PDF before applying
+    --llm-best      LLM reranker's top picks (needs `rank --save` first)
+    --jobs "1,2,3"  Specific job ids
+
+    OTHER:
+    --modify-resume Also tailor eligible jobs (they use master as-is by default)
+    --limit N       Cap how many jobs are processed
+
+━━━ APPLY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  apply         Fill application forms, best-matched first. STOPS for human review —
+                YOU click submit. Never auto-submits.
+    --limit N   Max packets per run  (default 3)
+    --source    Only jobs from this portal
+    --query     Filter by title/company text
+    --jobs "…"  Only these job ids
+
+  log           Record your outcome after submitting.
+    --job N     Job id                          (required)
+    --outcome   applied | skipped | failed      (required)
+    --note "…"  Free-text note
+    --screenshot  Path to a review screenshot
+
+  applied       Show the log of submitted / skipped / failed jobs.
+
+━━━ UTILITIES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  sources       List all auto-discovered portal plugins and their availability.
+
+  keys          Apify key health and token usage.
+    --llm       Show LLM provider key health instead (auto-rotates on 429)
+    --reset     all | exhausted | invalid | <key-hint>
+
+  report        Build the full application dashboard.
+
+Tip: `main.py <command> -h` shows that command's flags.
 """
 
 EXAMPLES = """\
 examples:
-  main.py --search --queries "security engineer,penetration tester" --days 7
-  main.py --lists --raw
-  main.py --prep --llm grok --eligible          # Groq writes only the best matches
-  main.py --apply --query penetration           # packets for roles matching the text
-  main.py --log --job 212 --outcome applied     # record after you submit
-  main.py --applied
+  # Search & triage
+  main.py search "detection eng,appsec,cloud security" "Bangalore,Remote" --days 14
+  main.py search "security" "" --source remoteok
+  main.py lists
+  main.py lists --raw
+
+  # LLM rank, then prep by tier
+  main.py rank --llm nvidia --eligible --save
+  main.py prep --llm-best --llm nvidia          # LLM's top picks
+  main.py prep --eligible  --llm nvidia          # keyword-eligible, no tailoring
+  main.py prep --needs-mod --llm nvidia          # tailor résumés
+  main.py prep --stretch   --llm nvidia          # stretch / pentest / senior-IC roles
+  main.py prep --jobs "42,57" --llm nvidia       # specific ids
+
+  # Apply & log
+  main.py apply --limit 3
+  main.py apply --query crowdstrike
+  main.py log --job 212 --outcome applied --note "sent cover letter"
+  main.py applied
+
+  # Housekeeping
+  main.py reject                                 # park hard-nos
+  main.py reject --by-llm                        # use LLM scores to filter
+  main.py stats
 """
 
 
@@ -606,11 +697,13 @@ COMMANDS = ("search", "lists", "prep", "apply", "log", "applied", "report",
 
 def _normalize_argv(argv: list[str]) -> list[str]:
     """Accept commands as --tags too: `main.py --apply ...` == `main.py apply ...`.
-    Only the leading command token is de-prefixed; per-command flags are untouched.
-    Bare-word commands keep working, so nothing breaks."""
+    Finds the first `--<command>` token at any position so that `-v --lists` works.
+    Bare-word commands and the new position-independent form both keep working."""
     argv = list(argv)
-    if argv and argv[0].startswith("--") and argv[0][2:] in COMMANDS:
-        argv[0] = argv[0][2:]
+    for i, arg in enumerate(argv):
+        if arg.startswith("--") and arg[2:] in COMMANDS:
+            argv[i] = arg[2:]
+            break
     return argv
 
 
@@ -618,11 +711,13 @@ def main(argv=None) -> int:
     argv = _normalize_argv(sys.argv[1:] if argv is None else list(argv))
     ap = argparse.ArgumentParser(
         prog="main.py",
-        usage="main.py [-h] <--command> [options]",
+        usage="main.py [-v|-vv] [-h] <--command> [options]",
         description=HELP_DESC,
         epilog=EXAMPLES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    ap.add_argument("-v", "--verbose", action="count", default=0,
+                    help="-v verbose (scoring details, actor IDs); -vv debug (full prompts)")
     # Every command + its flags is documented ONCE in HELP_DESC above. Suppressing the
     # whole subparsers action keeps `-h` from re-listing the commands (no duplication).
     sub = ap.add_subparsers(dest="cmd", metavar="<--command>", required=True,
@@ -640,8 +735,8 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_stats)
 
     p = sub.add_parser("rank")
-    p.add_argument("--llm", choices=["python", "grok", "deepseek", "api"], default="python",
-                   help="python = deterministic matcher; grok/deepseek/api = LLM rerank")
+    p.add_argument("--llm", choices=["python", "grok", "deepseek", "nvidia", "api"], default="python",
+                   help="python = deterministic matcher; grok/deepseek/nvidia/api = LLM rerank")
     p.add_argument("--limit", type=int, default=20, help="shortlist size to rerank")
     p.add_argument("--eligible", action="store_true", help="only eligible best-match jobs")
     p.add_argument("--jobs", default=None, help="comma-separated job ids")
@@ -672,13 +767,15 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_rejected)
 
     p = sub.add_parser("prep")
-    p.add_argument("--llm", choices=["claude", "grok", "deepseek", "api"], default="claude")
+    p.add_argument("--llm", choices=["claude", "grok", "deepseek", "nvidia", "api"], default="claude")
     p.add_argument("--eligible", action="store_true",
                    help="only eligible best-match jobs (keyword score)")
     p.add_argument("--llm-best", action="store_true",
                    help="only jobs the Grok reranker scored best (needs rank --save first)")
     p.add_argument("--needs-mod", action="store_true",
                    help="only non-best jobs that need résumé tailoring")
+    p.add_argument("--stretch", action="store_true",
+                   help="only stretch jobs (security-adjacent, low-fit; needs heavy rewrite)")
     p.add_argument("--jobs", default=None, help="comma-separated job ids")
     p.add_argument("--modify-resume", action="store_true")
     p.add_argument("--limit", type=int, default=None)
@@ -702,6 +799,9 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_report)
 
     args = ap.parse_args(argv)
+    # Thread verbosity level into subprocess env via JOBSEARCH_VERBOSITY so all
+    # skill scripts spawned by _run() inherit the same level without re-parsing flags.
+    os.environ["JOBSEARCH_VERBOSITY"] = str(min(2, args.verbose or 0))
     store.init_db()
     return args.func(args)
 

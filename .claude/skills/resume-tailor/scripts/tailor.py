@@ -56,6 +56,7 @@ except ImportError:
 
 from data import store  # noqa: E402
 from execution import llm  # noqa: E402
+from execution.log import add_verbose_arg, apply_verbosity, vprint  # noqa: E402
 
 DEFAULT_MASTER = ROOT / "varakumar_resume.tex"
 TAILORED_DIR = ROOT / "tailored"
@@ -95,7 +96,8 @@ SYSTEM_PROMPT = (
     'label strings given; omit none — any you don\'t list are appended in their '
     'original order"]\n'
     "}\n"
-    "Only facts present in current_summary/skill_labels may appear. Return ONLY the JSON."
+    "Only facts present in current_summary/skill_labels may appear. "
+    "Return ONLY the JSON — no <think> tags, no markdown fences, no preamble."
 )
 
 
@@ -232,8 +234,11 @@ def _normalize_directives(raw: dict) -> dict:
 
 def _extract_json(text: str) -> dict:
     """First complete JSON object from a model reply; tolerates ```json fences and
-    trailing prose (even with braces) via a string-aware brace scan."""
-    text = text.strip()
+    trailing prose (even with braces) via a string-aware brace scan.
+    Strips <think>…</think> reasoning traces emitted by some models (e.g. Nemotron)."""
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    if "<think>" in text:  # unclosed tag: drop everything from it onward
+        text = text[:text.index("<think>")].strip()
     fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
     if fenced:
         text = fenced.group(1)
@@ -376,13 +381,15 @@ def _attach_job(variant: dict, job_id: int) -> None:
 
 def _pending_jobs(limit: int | None, ids: list[int] | None = None) -> list[dict]:
     """Matched jobs with a jd_brief and no tailored résumé yet (the work queue).
-    `ids` (from `--jobs`) restricts to those specific job ids."""
+    `ids` (from `--jobs`) restricts to those specific job ids.
+    Sorted best-score first so a limited run processes the highest-rated jobs."""
     keep = set(ids) if ids else None
     out = []
     for j in store.get_jobs(status="matched"):
         if (j.get("jd_brief") or "").strip() and not (j.get("tailored_resume_path") or "").strip():
             if keep is None or j["id"] in keep:
                 out.append(j)
+    out.sort(key=lambda j: -(j["llm_score"] if j.get("llm_score") is not None else (j.get("match_score") or 0)))
     return out[:limit] if limit is not None else out
 
 
@@ -528,9 +535,11 @@ def run(limit: int | None, master_path: Path, build: bool, threshold: float,
             print(f"  ↻ job {job['id']} reused {match['variant_id']} → {art}")
             continue
         # LLM call: a network/API error aborts the batch (every later job would hit it).
+        prompt = _job_prompt(job, brief, parts)
+        vprint(2, f"\n  [vv] tailor prompt ({len(prompt)} chars):\n{prompt[:600]}…")
         try:
-            reply = llm.complete(_job_prompt(job, brief, parts), system=SYSTEM_PROMPT,
-                                 max_tokens=1500)
+            reply = llm.complete(prompt, system=SYSTEM_PROMPT, max_tokens=1500)
+            vprint(2, f"  [vv] reply: {reply[:400]}…")
         except Exception as exc:  # network/API error: stop cleanly, keep saved work
             print(f"  ✗ job {job['id']}: API error — {exc}", file=sys.stderr)
             failed += 1
@@ -538,6 +547,7 @@ def run(limit: int | None, master_path: Path, build: bool, threshold: float,
         # Parse + build: a bad reply or a build failure skips just THIS job.
         try:
             directives = _normalize_directives(_extract_json(reply))
+            vprint(1, f"    directives: tagline={directives.get('tagline_roles')}  skill_order[0:3]={directives.get('skill_order', [])[:3]}")
             variant = _create_variant(job, brief, sig, directives, master, parts, build)
         except (json.JSONDecodeError, ValueError, RuntimeError, OSError,
                 subprocess.TimeoutExpired) as exc:
@@ -599,7 +609,9 @@ def main(argv=None) -> int:
                     help="use the master résumé as-is (no LLM tailoring) → tailored")
     ap.add_argument("--reuse-threshold", type=float, default=REUSE_THRESHOLD,
                     help="keyword-overlap (Jaccard) to reuse a variant (default 0.6)")
+    add_verbose_arg(ap)
     args = ap.parse_args(argv)
+    apply_verbosity(args)
 
     store.init_db()
     build = not args.no_build
