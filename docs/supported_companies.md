@@ -6,43 +6,87 @@
 python3 .claude/skills/job-scraper/scripts/list_companies.py
 ```
 
-Total: **41** companies across **9** platforms/plugins.
+Total: **96** companies across **9** platforms/plugins.
 
-## Ashby (5)
+## Ashby (15)
 
+- 1Password
+- Cape
 - Chainalysis
 - Drata
+- Etched
+- HackerOne
+- Hopper
+- Horizon3.ai
 - Material Security
+- Monarch Money
 - Nudge Security
+- OnePay
 - Vanta
+- WorkOS
+- Writer
 
-## Greenhouse (16)
+## Greenhouse (35)
 
 - Abnormal Security
+- AlphaSense
+- Anduril Industries
+- Anthropic
+- Aptos
+- Armada
+- Branch
 - CloudSEK
 - Cloudflare
 - Corelight
+- DKatalis
 - Databricks
 - Datadog
+- Dialpad
 - Dragos
+- Extend
+- Galaxy
+- Gametime United
+- General Matter
 - GitLab
 - Huntress
+- Level Access
+- Machinify
+- Mixpanel
 - Netskope
+- Nozomi Networks
 - Okta
+- PlayStation Global
 - Recorded Future
 - SentinelOne
 - Tenable
+- Truveta
+- Vercel
 - Wiz
 - Zscaler
 
-## Lever (2)
+## Lever (16)
 
+- Airalo
+- Aircall
+- Arcadia
+- BlackCloak
 - CertiK
+- Cologix
+- EnableComp
+- Greenlight
+- Kobie Marketing
+- Lumin Digital
+- Palantir
+- Safe Security
 - Saviynt
+- Tala
+- Trilogy Federal
+- vivenu
 
-## Recruitee (1)
+## Recruitee (2)
 
 - Aikido Security
+- ON2IT
 
 ## SmartRecruiters (3)
 
@@ -50,27 +94,38 @@ Total: **41** companies across **9** platforms/plugins.
 - Mattel
 - Visa
 
-## Workable (1)
+## Workable (4)
 
+- BreachLock
 - Dispel
+- Evolve Security
+- InfoSum
 
-## Workday (9)
+## Workday (15)
 
+- Adobe
 - Arctic Wolf
+- Ciena
 - Cisco
 - CrowdStrike
 - F5
+- GE HealthCare
+- Inmar
+- PTC
 - Palo Alto Networks
 - Qualys
 - Rapid7
+- Red Hat
 - Trellix
 - Trend Micro
 
-## Zoho Recruit (3)
+## Zoho Recruit (5)
 
 - Astra Security
+- CDIT
 - InstaSafe
 - Simbian
+- Unit21
 
 ## Custom (non-ATS) plugins (1)
 

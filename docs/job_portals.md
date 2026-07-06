@@ -193,6 +193,58 @@ Akamai suspected — distinct from classic Taleo, medium confidence only).
 
 ---
 
+## Bulk company discovery via search-engine indexing (2026-07-06)
+
+**The technique:** every ATS platform's public job-board pages are ordinary indexed webpages
+— `job-boards.greenhouse.io/<slug>/jobs/<id>`, `jobs.lever.co/<slug>/<id>`, etc. A plain
+`site:<platform-domain> <role keyword>` web search surfaces many companies' slugs directly
+from the result URLs, in one query — no directory/API needed, since search engines already
+crawled these pages. This answers the "can't we just check every company at once?" question
+from earlier: not via the ATS platforms themselves (they expose no customer-list API), but
+via a search engine that already indexed their public pages.
+
+**Method:** `site:<domain> "detection engineer" OR vulnerability OR "product security" OR
+"cloud security" OR "penetration test"` (varied per query) against each platform's shared
+domain (`job-boards.greenhouse.io`, `jobs.lever.co`, `jobs.ashbyhq.com`,
+`apply.workable.com`, `*.recruitee.com`, `*.zohorecruit.com`/`.in`, `myworkdayjobs.com`).
+Extract the company slug from each result URL, dedupe against what's already configured,
+then **live-verify every candidate** (curl the real API, confirm it resolves with a real job
+count) before adding — discovery ≠ verification, same rule as every company added so far.
+
+**Result: 41 → 96 companies in one pass** (full current list: `docs/supported_companies.md`,
+regenerate via `list_companies.py`). Notable finds: Anthropic, Palantir, HackerOne,
+1Password, Adobe, Red Hat (all major names, previously missed by manual one-by-one
+research), plus strong candidate-fit companies: Nozomi Networks (ICS/OT — Greenhouse),
+Horizon3.ai (offensive security — Ashby), Evolve Security/BreachLock/Rhino Security Labs-style
+firms (security consultancies — Workable), ON2IT (pure cybersecurity — Recruitee), Unit21/CDIT
+(fraud/security fintech — Zoho Recruit).
+
+**Rejected during verification (real findings, not guesses):**
+- `jobgether` (Lever) — resolved with 4,803 postings, but inspecting actual items showed
+  unrelated roles (.NET dev, TPM, blockchain frontend) — it's a recruiting/job-marketplace
+  platform posting for many unrelated employers under one Lever account, not a single
+  company. Adding it would mislabel every posting's `company` field. Excluded.
+- `certifyos` (Lever), `dbtlabs`/`dbtlabsinc` (Greenhouse), `rhino-security-labs` (Workable),
+  `firstdue.com` (Zoho Recruit) — all resolved with 0 jobs (wrong/stale slug or genuinely
+  empty board). Excluded, not worth an empty `.env` entry.
+- `1x.recruitee.com`, `helpag.recruitee.com` — valid, resolving orgs (1X Technologies, Help AG)
+  but 0 open roles at verify time. Not added this pass; worth rechecking later since the org
+  itself is legitimate and thematically relevant (1X = robotics/product security, Help AG =
+  security consultancy).
+
+**Known pre-existing data quirk found during this pass, not introduced by it:** Corelight's
+Greenhouse `company_name` field returns the literal string `"Job Board"` instead of
+`"Corelight"` — a data-quality issue on Corelight's own Greenhouse configuration. `source`
+stays correctly `"corelight"` in the store, so identification isn't affected, only the
+cosmetic `company` display value. Not fixed in code: `greenhouse.py`'s `_to_job` prefers the
+API's `company_name` over the configured display name whenever the API provides ANY value
+(right behavior for the other 34 companies, whose real `company_name` is more accurate than
+an auto-derived one) — special-casing one company's bad data isn't worth the added
+complexity. If this becomes a real problem, the fix is a per-slug "force override" flag in
+`parse_companies`, not a global priority flip.
+
+---
+
 ## How to add a company to an existing ATS plugin
 
 No new file needed for any of the 8 platforms above — just add the slug to the `.env` list:
