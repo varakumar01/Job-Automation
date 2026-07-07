@@ -6,7 +6,7 @@
 python3 .claude/skills/job-scraper/scripts/list_companies.py
 ```
 
-Total: **96** companies across **9** platforms/plugins.
+Total: **119** companies across **17** platforms/plugins.
 
 ## Ashby (15)
 
@@ -25,6 +25,31 @@ Total: **96** companies across **9** platforms/plugins.
 - Vanta
 - WorkOS
 - Writer
+
+## Avature (2)
+
+- ManTech
+- Xerox
+
+## Cutshort (5)
+
+- Appknox
+- Innefu Labs
+- Metron Security
+- SecurEyes
+- Securin Labs
+
+## Darwinbox (3)
+
+- Quick Heal Technologies
+- ReBIT
+- Seclore
+
+## Freshteam (3)
+
+- Cyware
+- Payatu
+- Strobes Security
 
 ## Greenhouse (35)
 
@@ -83,10 +108,28 @@ Total: **96** companies across **9** platforms/plugins.
 - Trilogy Federal
 - vivenu
 
+## Oracle Fusion Cloud Recruiting (3)
+
+- Akamai
+- Fortinet
+- Kroll
+
 ## Recruitee (2)
 
 - Aikido Security
 - ON2IT
+
+## Rippling (5)
+
+- Agency Cybersecurity
+- Chess.com
+- RSA Security
+- Swimlane
+- Workstreet
+
+## SAP SuccessFactors (1)
+
+- W.L. Gore
 
 ## SmartRecruiters (3)
 
@@ -126,6 +169,10 @@ Total: **96** companies across **9** platforms/plugins.
 - InstaSafe
 - Simbian
 - Unit21
+
+## iCIMS (1)
+
+- HERE Technologies
 
 ## Custom (non-ATS) plugins (1)
 

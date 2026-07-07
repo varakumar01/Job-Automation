@@ -107,6 +107,42 @@ def parse_workday_companies(env_var: str) -> list[tuple[str, int, str, str]]:
     return out
 
 
+def parse_oraclefusion_companies(env_var: str) -> list[tuple[str, str, str]]:
+    """Parse an ``ORACLEFUSION_COMPANIES``-style env var into
+    ``[(host, site_number, display_name), ...]``.
+
+    Oracle Fusion Cloud Recruiting has no single "slug" either — each tenant's
+    career site is addressed by its own full hostname (e.g.
+    ``jpmc.fa.oraclecloud.com``) plus a per-tenant ``CX_<N>`` site number
+    (found on the tenant's public careers URL,
+    ``.../hcmUI/CandidateExperience/en/sites/CX_<N>/...``). Each entry is
+    ``host:site`` or ``host:site:Display Name``:
+
+        ORACLEFUSION_COMPANIES=jpmc.fa.oraclecloud.com:CX_1001:JPMorgan Chase
+
+    Malformed entries (wrong field count, empty host/site) are skipped with no
+    exception — a typo'd entry should not take down every other configured
+    company. Returns ``[]`` if the env var is unset or empty.
+    """
+    raw = os.environ.get(env_var, "").strip()
+    if not raw:
+        return []
+    out: list[tuple[str, str, str]] = []
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        parts = [p.strip() for p in entry.split(":")]
+        if len(parts) not in (2, 3):
+            continue
+        host, site = parts[0], parts[1]
+        if not host or not site:
+            continue
+        name = parts[2] if len(parts) == 3 and parts[2] else host.split(".", 1)[0].replace("-", " ").title()
+        out.append((host, site, name))
+    return out
+
+
 def epoch_ms_to_iso(epoch_ms: object) -> str | None:
     """Convert a Unix epoch in MILLISECONDS (Lever's ``createdAt``) to ISO
     8601. Returns None on any non-numeric/out-of-range input."""

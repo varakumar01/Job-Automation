@@ -291,7 +291,43 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done (review + test passed).
 - [ ] **YC Work at a Startup** (Apify or Playwright)
 - [ ] **Hirist** (Playwright/session)
 - [ ] **Instahyre** (Playwright/session)
-- [ ] **Cutshort** (Playwright/session)
+- [x] **Cutshort** — built 2026-07-07 as a Tier-1 JSON-embedded-in-HTML ATS-platform plugin
+  (`cutshort.py`), NOT Playwright/session as originally predicted here — see Phase 11 below.
+
+**Phase 11 — Wave 2: new ATS-provider plugins (owner request 2026-07-06, security-first)**
+- [x] Oracle Fusion Cloud Recruiting (`oraclefusion.py`) — Tier-1 JSON, no auth. Review+test
+  loop PASSED.
+- [x] SAP SuccessFactors CSB2 (`successfactors.py`) — Tier-2 sitemap + JSON-LD/microdata.
+  Review+test loop PASSED.
+- [x] Rippling ATS (`rippling.py`) — Tier-1 JSON, no auth. Review+test loop PASSED.
+- [x] iCIMS (`icims.py`) — Tier-2 HTML list + JSON-LD detail, reverses a Wave-1 "needs
+  browser" assessment. Review+test loop: first pass FAILED (list-page regex never matched
+  any real row due to intervening markup — BLOCKER), fixed and re-tested PASSED; a second
+  review round then found + fixed 2 MINOR + 2 NIT (dict-vs-string address guard, relative-URL
+  resolution, `validThrough` misused as posted_at, redundant unescape).
+- [x] Cutshort (`cutshort.py`, unlocks Appknox) — Tier-2 Next.js embedded JSON + JSON-LD
+  detail. Review+test loop PASSED first pass (code-tester), 1 MAJOR fixed on review
+  (unsafe `.get(key, {})` chaining crashes on a documented live `null` value) + 1 MINOR
+  (query-key alias mismatch guard).
+- [x] Darwinbox (`darwinbox.py`, unlocks Seclore) — Tier-1 JSON (same-origin API found via
+  the SPA shell's own JS bundle). Review+test loop PASSED first pass; 3 MINOR fixed on
+  review (redundant duplicate page-1 fetch, pagination-failure discarding all prior
+  candidates, docstring/URL mismatch).
+- [x] Freshteam (`freshteam.py`) — Tier-2 server-rendered HTML + JSON-LD detail, reverses a
+  Wave-1 "auth-gated" assessment. Review+test loop PASSED first pass; 2 MINOR fixed on
+  review (regex attribute-order fragility, un-unescaped location entities).
+- [x] Avature (`avature.py`, lowest priority) — Tier-2 server-rendered HTML, reverses a
+  Wave-1 "needs headless browser" assumption (the existing bespoke `synopsys.py` remains
+  separate/unaffected). Review+test loop PASSED first pass (single-tenant); adding a second
+  real tenant during the populate pass exposed 2 template-variance bugs (regex attribute-
+  order fragility identical to the Freshteam finding, plus a second card-layout generation
+  needing new location/posted-date fallback extractors) — both fixed, re-review + re-test
+  PASSED with both tenants live together.
+- [x] Populate pass — cybersecurity companies added across all 8 providers, product→
+  services→general-IT priority, Hyderabad/Bengaluru security-first scope (owner decision).
+  96 → 119 companies, 9 → 17 platforms. `list_companies.py` updated to recognize the 8 new
+  platforms (was silently omitting them from `docs/supported_companies.md`). Full company
+  list + exclusion reasoning in `docs/job_portals.md`; full technical decision log in §9.
 
 ---
 
@@ -653,6 +689,167 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   `answers.json`→save; `api`/`grok`=`run` loops calling `llm.complete`. Per-job
   persistence = resumable; `--limit` caps cost in api/grok mode; `_extract_json`
   tolerates fenced/prose model output. [§5]
+- 2026-07-06 — job-scraper — company-research routing (backfilled 2026-07-07, decided
+  2026-07-06) — **Bucket A/B/C classification** for every candidate company found during
+  Hyderabad/Bengaluru research: **Bucket A** = already on a known/built ATS platform → add
+  directly to that platform's `.env` list, no new code. **Bucket B** = a KNOWN platform that
+  is deliberately deferred (needs auth/OAuth, confirmed blocked, or just not built yet) →
+  flagged in `docs/job_portals.md`, not one-off'd around. **Bucket C** = a genuinely custom
+  career site with no known ATS underneath → candidate for a thin plugin built on
+  `_career_util.py`. This routing rule is applied BEFORE writing any plugin code — it's what
+  stopped one-off bespoke plugins from being written for companies that turned out to be on
+  an already-built platform (e.g. Saviynt looked like custom HubSpot CMS, was actually plain
+  Lever; InstaSafe looked like a custom Gatsby SPA, was actually a public Zoho Recruit
+  endpoint). [§4/§10]
+- 2026-07-06 — job-scraper — `_career_util.py` (backfilled 2026-07-07, decided 2026-07-06) —
+  NEW shared-helper module, sibling to `_ats_util.py`, specifically for Bucket-C bespoke
+  career sites (one plugin per site, not one plugin per many companies). Provides a 3-tier
+  fetch ladder a bespoke plugin should try in order: (1) `fetch_html`/`fetch_json` — plain
+  HTTP, most modern pages still server-render their initial job list for SEO; (2)
+  `extract_next_data`/`extract_ld_json`/`extract_window_var` — pull a JSON blob out of
+  otherwise-JS-rendered HTML (covers "looks like an SPA but the data is still in the page
+  source"); (3) `render_html` — LAST RESORT, a fresh headless Chromium tab via Playwright
+  (no persistent login profile — public career pages need none), gated behind
+  `playwright_available()`. Also centralizes `job_id_from_url`, `mmddyyyy_to_iso`/
+  `ddmmyyyy_to_iso` date parsing, and (added Wave 2, 2026-07-07) `extract_by_itemprop` for
+  schema.org microdata. Every bespoke plugin should use the LOWEST tier that works rather
+  than defaulting to Playwright. [§4]
+- 2026-07-06 — job-scraper — Hyderabad/Bengaluru scope (backfilled 2026-07-07, decided
+  2026-07-06) — owner-directed company-research scope: **Hyderabad and Bengaluru offices
+  only** this wave (no other Indian cities yet); **security-first, then broadening to all-IT**
+  — i.e. exhaust cybersecurity-relevant companies on a platform before adding general-IT
+  companies as filler. **Pune and Delhi are an explicitly deferred future addition**, not
+  in scope for Wave 1 or Wave 2. This scope directly carried into Wave 2's populate-pass
+  priority order (product security → security services → general IT tail) below. [§10]
+- 2026-07-07 — job-scraper — Wave 2 scope/priority (owner decision 2026-07-06, this session)
+  — explicit owner-directed order for Wave 2: (1) build NEW ATS-PROVIDER plugins first —
+  each provider unlocks many companies, higher leverage than one-off bespoke sites; (2) only
+  once a provider is built, populate it with real companies in priority order: cybersecurity
+  PRODUCT companies → cybersecurity SERVICES/consultancy companies → general IT companies
+  (tail only, not the focus); (3) **stay security-first, Hyderabad/Bengaluru** — do not
+  broaden to all-IT or add Pune/Delhi this wave (extends the Wave-1 scope decision above).
+  Candidate provider order (research-backlog priority, owner can re-prioritize): Oracle
+  Fusion → SuccessFactors → Rippling → iCIMS → Cutshort → Darwinbox → Freshteam → Avature
+  (lowest priority — per-company microsites, historically assumed browser-only). [§4/§10]
+- 2026-07-07 — job-scraper — Oracle Fusion Cloud Recruiting plugin BUILT — Tier-1 JSON API,
+  no auth. List: `GET https://<host>/hcmRestApi/resources/latest/recruitingCEJobRequisitions
+  ?onlyData=true&expand=requisitionList&finder=findReqs;siteNumber=<site>,keyword=<query>,
+  limit=<n>,offset=<n>,sortBy=POSTING_DATES_DESC` (the `expand=requisitionList` param is
+  REQUIRED — omitting it returns only search-criteria echo, no job items). Detail:
+  `.../recruitingCEJobRequisitionDetails?...finder=ById;Id="<jobId>",siteNumber=<site>`.
+  Identifier is `host:site` (or `host:site:Display Name`) — host varies per tenant/region, site
+  is a `CX_<N>` number read off the tenant's own careers URL path. Oracle's own docs call this
+  REST resource "internal use only" but every tenant's public careers page calls it
+  client-side with zero access control. `parse_oraclefusion_companies` added to `_ats_util.py`.
+  Query is sanitized (commas/semicolons stripped) before interpolating into the `finder`
+  mini-language string (both are the language's own delimiters). [§4/§10]
+- 2026-07-07 — job-scraper — SAP SuccessFactors (CSB2) plugin BUILT — NO bare public JSON API
+  (`/odata/v2/JobRequisition` needs per-tenant HTTP Basic Auth, confirmed live 401) — Tier-2
+  instead: List via the tenant's own public `sitemap.xml` (iterated as `<url>` blocks via
+  lazy `finditer`, genuinely bounded at `_MAX_SITEMAP_ENTRIES`, not a fully-materialized
+  `findall`), cheap-filtered by the job URL's own slug before any detail fetch. Detail via the
+  job's own URL — title/description via schema.org microdata (`itemprop="title"`/
+  `"description"`, extracted by the new `_career_util.extract_by_itemprop` HTMLParser-based
+  extractor — built because no existing plugin needed this level of HTML parsing). Location/
+  posted-date sit in a `joblayouttoken-label` "Label: value" template — tenant-specific which
+  labels are populated (W.L. Gore uses "State/Province", City of London uses "Office
+  Location") — tried via an ordered candidate-label tuple, first hit wins. Identifier is the
+  full tenant hostname (`<subdomain>.jobs.hr.cloud.sap`), not a bare slug. Only the CSB2
+  template flavor is covered; the older "Career Portal" flavor (stateful DWR/AJAX-RPC) is
+  out of scope. [§4/§10]
+- 2026-07-07 — job-scraper — Rippling ATS plugin BUILT — Tier-1 JSON API, no auth. List:
+  `GET https://ats.rippling.com/api/v2/board/<slug>/jobs?page=<n>&pageSize=<n>&
+  searchQuery=<query>`. Detail: `.../jobs/<uuid>`. Identifier is a bare board slug (same shape
+  as Greenhouse). Cleanest/simplest of the Wave 2 providers — no template variance, no auth
+  quirks found across 4 live-tested tenants. [§4/§10]
+- 2026-07-07 — job-scraper — iCIMS plugin BUILT (reversing the Wave-1 "HTML-only, needs
+  browser" assessment) — genuinely Tier-2, no browser needed. The bare `/jobs/search`
+  endpoint returns an empty client-side Angular shell UNLESS a `pr=<page>` (1-indexed) query
+  param is present, in which case the SAME domain returns real server-rendered job rows —
+  this `pr=N` requirement is what made the platform look JS-rendered-only in the original
+  Wave-1 pass. List: `GET https://careers-<slug>.icims.com/jobs/search?pr=<page>&
+  in_iframe=1`, HTML row-scraped. Detail: the job's own URL, schema.org JSON-LD `JobPosting`
+  block. No working RSS/XML feed exists on this platform (4 path variants tried, all dead) —
+  corrects a prior docs claim. iCIMS's own JSON-LD uses the literal string `"UNAVAILABLE"` as
+  a sentinel for a blank address field — filtered out in `_location_from_ld`, or it leaks into
+  stored `location` values. [§4/§10]
+- 2026-07-07 — job-scraper — Cutshort plugin BUILT (unlocks Appknox) — the company page's own
+  Next.js `__NEXT_DATA__` genuinely embeds the full job list server-side (a shallower Wave-1
+  check saw `dehydratedState: null` — a cache/edge-case on that one check, not the platform
+  default). List path: `dehydratedState.queries[?].state.data.data.pageData.companyJobs.jobs`
+  (query matched on `queryKey == ["companyPageData", <alias>]`). Detail: the job's own
+  `publicUrl`, schema.org JSON-LD `JobPosting` block (title/description/datePosted preferred
+  over the list call's own blurb/`hiringIntentShownOn`, which is ambiguous). `validThrough`
+  (an application deadline) is deliberately never used as a `posted_at` fallback — same
+  reasoning as iCIMS. Scaling signal: `cutshort-data.s3.amazonaws.com/.../companies-sitemap.xml`
+  lists 15k+ company URLs (not used for auto-discovery this wave, but confirms the platform's
+  breadth). Identifier is the FULL opaque `/company/<alias>` string (parens/suffix and all),
+  copied verbatim from the company's own page — no shorter/guessable form exists. [§4/§10]
+- 2026-07-07 — job-scraper — Darwinbox plugin BUILT (unlocks Seclore) — the SPA shell is
+  genuinely empty (confirms the Wave-1 finding) but the frontend's own `main.<hash>.js`
+  bundle reveals a clean public, unauthenticated same-origin JSON API
+  (`environment.apiURL = "/ms/candidateapi/"`). List: `GET https://<tenant>.darwinbox.{in,com}
+  /ms/candidateapi/job?page=<n>`. Detail: `.../job/<id>`. Tenant TLD (`.in` vs `.com`) is
+  auto-probed, not configured, since it varies per tenant with no public pattern. The detail
+  call's `jd` field is DOUBLE HTML-encoded (the JSON string itself contains literal
+  `&lt;div&gt;` entity sequences representing real markup that was itself entity-escaped) —
+  requires `html.unescape()` once FIRST, then `strip_html()` a second time to actually strip
+  the revealed tags; this exact double-unescape pattern recurred for Freshteam below and is
+  now a documented, reusable fix. [§4/§10]
+- 2026-07-07 — job-scraper — Freshteam plugin BUILT (reversing a Wave-1 "auth-gated,
+  `/api/*` returns 401" assessment) — the confirmed-401 `/api/portal/jobs` path is a
+  credential-gated RECRUITER-portal endpoint, unrelated to public job listing. The actual
+  public `/jobs` career page is genuinely server-rendered HTML (job cards regex-scraped
+  directly, no API call of any kind needed — the simplest plugin built this wave). Detail via
+  the job's own URL, schema.org JSON-LD `JobPosting` block, same double-HTML-encoding fix as
+  Darwinbox applied to the `description` field. No pagination signal was found on any tested
+  tenant's `/jobs` page (every tenant's full list rendered on one page) — the plugin fetches
+  page 1 only; revisit only if a tenant with a genuinely multi-page list is found. [§4/§10]
+- 2026-07-07 — job-scraper — Avature plugin BUILT (reversing the Wave-1 assumption that
+  Avature needs a full headless-browser approach, based on the existing bespoke
+  `synopsys.py` Playwright plugin) — the common `SearchJobs`/`JobDetail` template family is
+  genuinely server-rendered HTML across unrelated tenants, no JS needed; `synopsys.py`
+  remains a separate bespoke plugin for that one company's specific site, unaffected. TWO
+  card-layout generations were found and are both supported: generation (a — Xerox/Bloomberg/
+  Koch-style) uses labeled City/State/Country `<p>` tags and a `<meta name="Description"
+  content="...created DD-Mon-YYYY">` posted-date; generation (b — ManTech-style) uses plain
+  `list-item-location`/`list-item-posted` spans directly on the list card instead (tried as a
+  fallback when generation (a)'s labels aren't found). An OLDER, unsupported generation exists
+  (KPMG US: `JobDetail?jobId=` query-param URLs, different CSS classes) — not built against
+  speculatively; revisit only if a target company is actually found on it. Identifier is the
+  FULL hostname (some tenants use a custom CNAME domain, e.g. ManTech's `careers.mantech.com`,
+  not just `<tenant>.avature.net`). Lowest-priority provider per the Wave 2 scope decision
+  above — built last, populated with only 1 clearly-relevant company (ManTech) plus the
+  original non-security smoke-test seed (Xerox, kept rather than removed). [§4/§10]
+- 2026-07-07 — job-scraper — Wave 2 populate pass — cybersecurity companies added, live-
+  verified with real open postings before adding, in the product→services→general-IT order
+  per the Wave 2 scope decision: Oracle Fusion +Fortinet (security product, 789-910 live
+  jobs — NOTE: Wave 1's `docs/job_portals.md` had flagged Fortinet as "no static/rendered
+  signal found, likely bot-protected" researching a DIFFERENT platform/domain; it resolves
+  cleanly on Oracle Fusion under a different host, correcting that Wave-1 finding), +Kroll
+  (risk-advisory w/ a real Cyber Risk practice). Rippling +RSA Security, +Swimlane (SOAR
+  vendor), +Agency Cybersecurity (GRC/compliance MSSP), +Workstreet (GRC/compliance
+  consultancy). Cutshort +Innefu Labs, +Securin Labs, +Metron Security, +SecurEyes. Darwinbox
+  +Quick Heal Technologies, +ReBIT (pure-play security vendors proved rare on this platform —
+  reported honestly as 2 found, not padded). Freshteam +Payatu, +Strobes Security. Avature
+  +ManTech. SAP SuccessFactors: **0 companies added** — ~50 major security vendors/MSSPs
+  checked, NONE resolve on the CSB2 flavor (all on Workday/Ashby/a legacy SF flavor instead) —
+  a genuine platform-adoption gap, not a search shortfall. iCIMS: **0 companies added** — the
+  only strong hit (Peraton) sits behind an inconsistent AWS WAF challenge and is a tier-2/3-
+  border diversified govcon, not a pure-play vendor — excluded as unreliable rather than
+  forced in. Full company list + exclusion reasoning in `docs/job_portals.md`. [§4/§8/§10]
+- 2026-07-07 — job-scraper — Avature template-variance fix (found during the populate pass,
+  not the initial build/review/test loop) — adding ManTech exposed that `_JOB_BLOCK_RE`/
+  `_TITLE_LINK_RE` were written too strictly against Xerox's exact markup (an EXACT class-list
+  match with nothing else before `">`, and a literal `<a href="` with `href` required as the
+  first attribute) — ManTech's real markup has an extra CSS class + a trailing `id=` attribute
+  on the article tag, and `class="link"` BEFORE `href` on the title anchor; both silently
+  matched zero rows with no error. Fixed by loosening both regexes to tolerate attribute
+  order/extra attributes (word-boundary + `[^>]*` instead of an exact string match). Re-review
+  + re-test both PASSED after the fix, live-verified against both tenants together (no
+  regression on Xerox). Self-annealing lesson: a single-tenant smoke test during the initial
+  build is NOT sufficient proof a scraping regex generalizes — a second real tenant during
+  populate is often the first real cross-tenant-variance test a plugin gets. [§4/§10]
 
 ---
 
@@ -675,30 +872,38 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
 - **Portal-plugin design (approved 2026-07-01, build = follow-up).** Broaden sourcing via
   the existing §4 plugin system (`JobSourcePlugin` + `registry.py` auto-discovery = the
   "common manager + minimal per-portal plugin" the owner wants). Recommended, in priority:
-  - **ATS-API plugins — 8 of 9 BUILT (2026-07-05).** Greenhouse, Lever, Ashby, SmartRecruiters,
-    Recruitee, BambooHR, Workday, Workable are all live plugins, each reading company slugs
-    from a `.env` list (Workday needs `tenant:wdN:site`, not a bare slug). **Eightfold is
+  - **ATS-API plugins — 16 of 18 known patterns BUILT (2026-07-07).** Greenhouse, Lever,
+    Ashby, SmartRecruiters, Recruitee, BambooHR, Workday, Workable, Zoho Recruit (built
+    2026-07-05/06), plus Oracle Fusion Cloud Recruiting, SAP SuccessFactors, Rippling ATS,
+    iCIMS, Cutshort, Darwinbox, Freshteam, Avature (Wave 2, built 2026-07-07) — 17 live
+    plugins total, each reading company slugs from a `.env` list (Workday needs
+    `tenant:wdN:site`, Oracle Fusion needs `host:site`, SuccessFactors/Avature need the FULL
+    hostname — see each plugin's docstring for its exact identifier shape). **Eightfold is
     BLOCKED, not just deferred:** its documented public endpoint
     (`GET <co>.eightfold.ai/api/apply/v2/jobs`) returns `403 "Not authorized for PCSX"` for
     every company/method/header combination tried (Qualcomm, NVIDIA both live-tested,
     GET/POST, with/without cookies/Referer) — it's CSRF/session-gated, not a bare public API
-    like the other 8, and needs a real Playwright browser session (the "custom plugin"
-    category above), not an ATS-JSON plugin. **Zoho Recruit** (Simbian) needs an OAuth token —
-    confirmed but deferred, not blocked. Each plugin returns normalized `Job`s with the
-    **job-detail link in `Job.url`** (NOT the apply-button link). Remaining un-built
-    ATS patterns from the original research: Workday/SmartRecruiters/Ashby/Recruitee/
-    Workable/BambooHR now built; only **iCIMS** and **Taleo** (both HTML-only, no public
-    JSON — would need Apify/browser) remain un-built.
+    like the other 17, and needs a real Playwright browser session (the "custom plugin"
+    category above), not an ATS-JSON plugin. **Taleo** remains genuinely un-built (HTML-only,
+    no public JSON confirmed yet — would need Apify/browser); **iCIMS was reversed from this
+    same "HTML-only" assessment in Wave 2** once a required `pr=<page>` query param was found
+    to unlock real server-rendered rows on the SAME endpoint. Each plugin returns normalized
+    `Job`s with the **job-detail link in `Job.url`** (NOT the apply-button link).
   - **Aggregators** (one plugin = many companies), via Apify or public API: **Foundit/Monster,
     Instahyre, Hirist, Wellfound, Internshala** (like the existing Naukri plugin).
-  - **Owner's 7 sites — RESOLVED 2026-07-05:** Qualcomm→Eightfold (blocked, see above),
-    Simbian→Zoho Recruit (confirmed, deferred/OAuth), cyber-times.in/jobs→**OFFLINE**
-    (impersonation probe, skipped), Qualys→**Workday** (`qualys:5:Careers`, configured, strong
-    role match), Mattel→**SmartRecruiters** (`MattelInc`, configured, weak IT-security match
-    only), Sibros→**Rippling ATS** (not one of the 9 target platforms — flagged for a possible
-    future plugin), EY→**SAP SuccessFactors** (out of scope, not one of the 9 target platforms).
+  - **Owner's 7 sites — RESOLVED 2026-07-05, 2 more resolved 2026-07-07 (Wave 2):**
+    Qualcomm→Eightfold (still blocked, see above), Simbian→Zoho Recruit (confirmed,
+    deferred/OAuth), cyber-times.in/jobs→**OFFLINE** (impersonation probe, skipped),
+    Qualys→**Workday** (`qualys:5:Careers`, configured, strong role match), Mattel→
+    **SmartRecruiters** (`MattelInc`, configured, weak IT-security match only), Sibros→
+    **Rippling ATS** (Wave 2, 2026-07-05 note said "not one of the 9 target platforms,
+    flagged" — **now built**, Sibros itself not yet re-verified/added to `.env`, but the
+    platform is no longer a blocker), EY→**SAP SuccessFactors** (Wave 2, same resolution —
+    platform now built, EY itself not re-verified/added since the populate pass found no
+    cybersecurity vendors on this specific CSB2 flavor and EY is general-IT/consultancy, tail
+    priority).
   - Live-verified cybersecurity company list (job counts, role-keyword matches, dead/rejected
-    slugs) across all 8 working platforms lives in `docs/job_portals.md`.
+    slugs) across all 17 working platforms lives in `docs/job_portals.md`.
 - **Easy-apply source (open).** The v1 LinkedIn actor gives no Easy-Apply flag (verified
   2026-07-01). To offer an easy-apply filter later: an actor that outputs `applyType`, or
   detect at apply-time via browser-driving (§11 Option 2).

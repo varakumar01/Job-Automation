@@ -115,7 +115,14 @@ A new job source = **one file**, no edits anywhere else (registry auto-discovers
    `.env` `*_COMPANIES` var (or a new custom single-company plugin ships), run
    `python3 .claude/skills/job-scraper/scripts/list_companies.py` to regenerate
    `docs/supported_companies.md` — it reads live from `.env`, so it can't drift if
-   you remember to re-run it.
+   you remember to re-run it. **But a BRAND NEW ATS platform must first be added to
+   `list_companies.py`'s own `_SLUG_PLATFORMS` list** (or, for a non-`slug:Display Name`
+   identifier shape like Workday/Oracle Fusion, a dedicated `_<platform>_rows()`
+   function) — the script only knows the platforms hardcoded there; a new plugin
+   whose platform isn't registered in the script gets silently omitted from the
+   generated doc with no error (found live 2026-07-07: 8 new Wave-2 platforms were
+   fully populated in `.env` and scraping correctly, but invisible in
+   `docs/supported_companies.md` until the script itself was updated).
 
 Rules: the registry skips `base`, `registry`, `__init__`, and any `_`-prefixed module,
 and only registers `JobSourcePlugin` subclasses defined in their own module; duplicate
@@ -129,3 +136,16 @@ several candidate keys per field (`plugins/<portal>.py`). If a field stops
 populating after a live scrape, inspect the raw item (stored in `Job.extra` /
 `data/jobs.json`), add the new key to the candidate list, and update the
 "verified" date in that plugin's docstring + here.
+
+**HTML-scraping regexes must never assume exact attribute order or an exact class
+list** (found repeatedly across `icims.py`, `freshteam.py`, and `avature.py` — a
+single-tenant/single-company smoke test during the initial build is NOT sufficient
+proof a scraping regex generalizes; a SECOND real tenant, often only encountered
+during the later "populate with real companies" pass, is frequently the first real
+cross-tenant-markup-variance test a plugin gets). Concretely: write `<a\b[^>]*?href="`
+instead of a literal `<a href="` (tolerates an attribute like `class="link"` appearing
+before `href`); write `class="foo\b[^>]*>` instead of `class="foo">` (tolerates extra
+classes/attributes after the one you're matching on). A regex written against ONE
+company's markup will look correct and pass its own review/test loop, then silently
+return zero rows (no exception, no error) the moment a second company on the same
+platform uses a slightly different but semantically-equivalent markup shape.

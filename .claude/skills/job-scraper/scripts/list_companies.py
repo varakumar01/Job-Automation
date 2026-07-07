@@ -32,7 +32,7 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(_REPO_ROOT / ".env")
 
-from _ats_util import parse_companies, parse_workday_companies  # noqa: E402
+from _ats_util import parse_companies, parse_oraclefusion_companies, parse_workday_companies  # noqa: E402
 
 # (display name, .env var, plugin file) for every ATS platform plugin using
 # the plain slug[:Display Name] format.
@@ -45,6 +45,13 @@ _SLUG_PLATFORMS = [
     ("BambooHR", "BAMBOOHR_COMPANIES", "bamboohr.py"),
     ("Workable", "WORKABLE_COMPANIES", "workable.py"),
     ("Zoho Recruit", "ZOHORECRUIT_COMPANIES", "zoho_recruit.py"),
+    ("SAP SuccessFactors", "SUCCESSFACTORS_COMPANIES", "successfactors.py"),
+    ("Rippling", "RIPPLING_COMPANIES", "rippling.py"),
+    ("iCIMS", "ICIMS_COMPANIES", "icims.py"),
+    ("Cutshort", "CUTSHORT_COMPANIES", "cutshort.py"),
+    ("Darwinbox", "DARWINBOX_COMPANIES", "darwinbox.py"),
+    ("Freshteam", "FRESHTEAM_COMPANIES", "freshteam.py"),
+    ("Avature", "AVATURE_COMPANIES", "avature.py"),
 ]
 
 # Custom (non-ATS) single-company plugins — no .env entry, so maintained by
@@ -72,8 +79,15 @@ def _workday_rows() -> list[tuple[str, str, str]]:
     return rows
 
 
+def _oraclefusion_rows() -> list[tuple[str, str, str]]:
+    rows = []
+    for _host, _site, name in parse_oraclefusion_companies("ORACLEFUSION_COMPANIES"):
+        rows.append(("Oracle Fusion Cloud Recruiting", name, "oraclefusion.py"))
+    return rows
+
+
 def generate_markdown() -> str:
-    all_rows = _slug_platform_rows() + _workday_rows()
+    all_rows = _slug_platform_rows() + _workday_rows() + _oraclefusion_rows()
     all_rows.sort(key=lambda r: (r[0], r[1]))
 
     lines = [

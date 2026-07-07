@@ -25,6 +25,14 @@ rest.
 | **Workday** | `workday.py` | `WORKDAY_COMPANIES` | No single slug — needs `tenant:wdN:site` (3 parts; found by trial/network-tab). Server-enforced page-size max is **20** (21+ → HTTP 400). Detail URL is `.../site<externalPath>` with NO extra `/job` literal — `externalPath` already starts with `/job/...` |
 | **Workable** | `workable.py` | `WORKABLE_COMPANIES` | POST body must be `{"query": "..."}` ONLY — an added `"limit"` key errors. No description field or URL in the payload at all: `jd_text` is always `None`; `Job.url` is constructed as `apply.workable.com/<co>/j/<shortcode>/` |
 | **Zoho Recruit** | `zoho_recruit.py` | `ZOHORECRUIT_COMPANIES` | Discovered 2026-07-06 (corrects an earlier "needs OAuth" note below — that's only true of Zoho's authenticated CRUD API): every org with a published public career page exposes an UNAUTHENTICATED `.../recruit/v2/public/Job_Openings` endpoint. `subdomain.tld` addressing (TLD varies, `.com`/`.in` both seen), not a bare slug. No pagination params accepted — one call returns everything. No company-name field; `Date_Opened` is US `MM/DD/YYYY`. |
+| **Oracle Fusion Cloud Recruiting** | `oraclefusion.py` | `ORACLEFUSION_COMPANIES` | Built 2026-07-07. Public, unauthenticated REST (`recruitingCEJobRequisitions` list + `recruitingCEJobRequisitionDetails` detail) — `expand=requisitionList` is REQUIRED on the list call or it returns only search-criteria echo. Identifier is `host:site` or `host:site:Display Name` (host varies per tenant/region; site is a `CX_<N>` number read off the tenant's own careers URL). Oracle's own docs call this REST resource "internal use only" — works anyway, no access control. |
+| **SAP SuccessFactors (CSB2)** | `successfactors.py` | `SUCCESSFACTORS_COMPANIES` | Built 2026-07-07. NO bare public JSON API (OData v2 needs per-tenant Basic Auth, confirmed 401) — scrapes the public `sitemap.xml` + server-rendered job-detail HTML instead (schema.org microdata via a new `_career_util.extract_by_itemprop` helper). Identifier is the FULL tenant hostname (`<subdomain>.jobs.hr.cloud.sap`), not a bare slug. Location/posted-date labels vary per tenant template (tried via an ordered candidate list). Only the CSB2 flavor is covered, not the older "Career Portal" DWR/AJAX-RPC flavor. |
+| **Rippling ATS** | `rippling.py` | `RIPPLING_COMPANIES` | Built 2026-07-07. Clean public, unauthenticated JSON API (`ats.rippling.com/api/v2/board/<slug>/jobs`), bare slug identifier. Simplest/cleanest of the 2026-07-07 batch — no template variance or auth quirks found across 4 tenants. |
+| **iCIMS** | `icims.py` | `ICIMS_COMPANIES` | Built 2026-07-07 — reverses an earlier "HTML-only, needs browser" assessment (see below). The bare `/jobs/search` endpoint needs a required `pr=<page>` query param or it silently falls through to an empty Angular shell; WITH it, the same domain returns real server-rendered job rows. Detail via schema.org JSON-LD. No working RSS/XML feed exists (corrects an earlier claim). The literal string `"UNAVAILABLE"` is iCIMS's own sentinel for a blank address field — filtered out, not stored as real location data. |
+| **Cutshort** | `cutshort.py` | `CUTSHORT_COMPANIES` | Built 2026-07-07 (unlocks Appknox) — an Indian tech-hiring aggregator; the company page's own Next.js `__NEXT_DATA__` genuinely embeds the full job list server-side (a shallower earlier check saw a null `dehydratedState`, a cache/edge-case, not the platform default). Identifier is the FULL opaque `/company/<alias>` string (parens/suffix and all), copied verbatim — no shorter form exists. |
+| **Darwinbox** | `darwinbox.py` | `DARWINBOX_COMPANIES` | Built 2026-07-07 (unlocks Seclore) — a common Indian HRMS/ATS. The SPA shell is genuinely empty, but the frontend's own JS bundle reveals a clean public same-origin JSON API (`/ms/candidateapi/job`). Tenant TLD (`.in`/`.com`) is auto-probed, not configured. The detail call's `jd` field is DOUBLE HTML-encoded — needs `html.unescape()` then `strip_html()` (the same fix recurred for Freshteam). |
+| **Freshteam** | `freshteam.py` | `FRESHTEAM_COMPANIES` | Built 2026-07-07 — reverses an earlier "auth-gated, `/api/*` returns 401" assessment (see below); that 401'd path is a credential-gated RECRUITER-portal endpoint, unrelated to public job listing. The actual public `/jobs` page is genuinely server-rendered HTML — simplest plugin in this batch, no API call at all. Same double-HTML-encoding fix as Darwinbox for the `description` field. No pagination signal found on any tested tenant (fetches page 1 only). |
+| **Avature** | `avature.py` | `AVATURE_COMPANIES` | Built 2026-07-07 — reverses an assumption that Avature needs a full headless-browser approach (based on the existing bespoke `synopsys.py` Playwright plugin, which remains separate/unaffected). The common `SearchJobs`/`JobDetail` template is genuinely server-rendered across unrelated tenants. TWO card-layout generations supported (labeled City/State/Country paragraphs vs. plain `list-item-location`/`list-item-posted` spans); a THIRD, older generation (KPMG-style `JobDetail?jobId=` query params) is confirmed to exist but not supported. Identifier is the FULL hostname (some tenants use a custom CNAME, not `<tenant>.avature.net`). Lowest-priority provider in the batch — built last. |
 
 **Custom (non-ATS) company career-site plugins — a different pattern.** Bespoke sites can't
 share a `.env` company list the way ATS platforms do (no shared request shape), so each gets
@@ -130,6 +138,50 @@ Dispel — Zero Trust remote access for ICS/SCADA, strong thematic fit.
 No live cybersecurity customer identified yet — plugin built and tested, `.env` list left
 empty until one is found.
 
+### Oracle Fusion Cloud Recruiting (added 2026-07-07, Wave 2)
+Akamai (WAF/DDoS/Zero Trust vendor, smoke-test seed), Fortinet (`edel.fa.us2.oraclecloud.com:
+CX_2001` — 789-910 live roles), Kroll (`hcxs.fa.us2.oraclecloud.com:CX_1` — risk-advisory firm
+with a real Cyber Risk practice).
+
+### SAP SuccessFactors (added 2026-07-06, populated 2026-07-07, Wave 2)
+W.L. Gore (smoke-test seed) only. ~50 major security vendors/MSSPs checked during the populate
+pass (McAfee, CyberArk, Check Point, Darktrace, Mandiant, Fortinet, Sophos, Bitdefender, ESET,
+Kaspersky, Secureworks, Trustwave, NCC Group, Optiv, etc.) — none resolve on this specific CSB2
+flavor; all are on Workday/Ashby/a legacy SF "Career Portal" flavor instead. Genuine platform-
+adoption gap for this vertical, not a search shortfall.
+
+### Rippling ATS (added 2026-07-07, Wave 2)
+Chess.com (smoke-test seed, not security), RSA Security (SIEM/identity vendor), Swimlane (SOAR
+product vendor), Agency Cybersecurity (GRC/compliance MSSP), Workstreet (GRC/compliance
+consultancy).
+
+### iCIMS (added 2026-07-07, Wave 2)
+HERE Technologies (smoke-test seed, not security) only. The one strong candidate found,
+Peraton (national-security contractor, real cyber-intel roles), was excluded — its tenant
+sits behind an inconsistent AWS WAF "Human Verification" challenge and is tier-2/3-border
+(diversified govcon, not pure-play security).
+
+### Cutshort (added 2026-07-07, Wave 2)
+Appknox (mobile app security vendor, smoke-test seed AND genuine target), Innefu Labs
+(AI-driven national/cyber security product), Securin Labs (exposure/vuln management
+platform), Metron Security (Splunk/QRadar/CrowdStrike security services), SecurEyes (security
+consulting/MSSP).
+
+### Darwinbox (added 2026-07-07, Wave 2)
+Seclore (data-security vendor, smoke-test seed AND genuine target), Quick Heal Technologies
+(antivirus/endpoint security vendor, owns Seqrite), ReBIT (RBI-owned fintech infra org with
+real AppSec/SSDLC postings). Pure-play security vendors proved rare on this platform during a
+broad ~40-tenant sweep.
+
+### Freshteam (added 2026-07-07, Wave 2)
+Cyware (threat-intel vendor, smoke-test seed AND genuine target), Payatu (pentest/red-team/IoT
+security services), Strobes Security (risk-based vuln mgmt / PTaaS / CTEM product — the
+rebrand of WeSecureApp, flagged unresolved in Wave 1).
+
+### Avature (added 2026-07-07, Wave 2, lowest priority)
+Xerox (smoke-test seed, not security), ManTech (defense/intel IT services with a real cyber
+practice — required a template-variance regex fix during the populate pass, see PLAN.md §9).
+
 ---
 
 ## Hyderabad/Bengaluru company research — Phase 2, wave 1 (2026-07-06)
@@ -167,29 +219,38 @@ Recruit endpoint** — re-classified to the Zoho Recruit platform above, not a c
 **Bucket C — investigated, not built this wave (genuinely needs more work):**
 - **Check Point** (`careers.checkpoint.com`) — returns `403` to a real headless-browser
   request too (not just curl); likely bot/WAF-protected regardless of rendering approach.
-- **Seclore** (`seclore.darwinbox.in`) — genuine client-side SPA shell (335-byte raw HTML,
-  no embedded JSON blob); would need either full Playwright DOM-scraping (not yet attempted)
-  or a Darwinbox-specific API discovery pass like the one that worked for Zoho Recruit.
-- **Appknox** (outbound to `cutshort.io/job/<slug>`) — Cutshort's `__NEXT_DATA__` blob has
-  `dehydratedState: null`; the real job data is fetched via a client-side call not yet
-  identified. Cutshort is itself a multi-company Indian job aggregator — worth a dedicated
-  investigation pass (like Zoho Recruit) rather than a single-company plugin, since finding
-  its API would unlock many companies at once, not just Appknox.
 
-**Flagged — no static or rendered signal found, needs a dedicated follow-up pass:** Radware,
-Fortinet, Sophos (fetch consistently failed, likely bot-protected), Wells Fargo, Deutsche
-Bank, SentinelOne's own careers page (note: SentinelOne is already covered via Greenhouse
-under a different board name, `sentinellabs`), Deepfence (bot-challenge blocked), Imperva
-(old Jobvite board dead post-Thales-acquisition, new career site not yet found), WeSecureApp
-(rebranded to "Strobes Security", new domain not yet found).
+**RESOLVED in Wave 2 (2026-07-07)** — these Wave-1 "flagged/deferred/needs more work" items
+turned out to have real public endpoints once a proper platform-level discovery pass ran,
+rather than needing per-company custom work:
+- **Seclore** (was: "genuine client-side SPA shell, 335-byte raw HTML, no embedded JSON") —
+  the SPA shell finding was correct, but its frontend's own JS bundle reveals a clean public
+  same-origin JSON API (`/ms/candidateapi/job`) — see the new **Darwinbox** platform plugin
+  (`darwinbox.py`) in the "Currently built" table above. Now configured as `seclore`.
+- **Appknox** (was: "Cutshort's `dehydratedState: null`, real API not yet identified") — a
+  deeper pass found the company page's `__NEXT_DATA__` genuinely embeds the full job list
+  server-side; the earlier `null` was a cache/edge-case, not the platform default — see the
+  new **Cutshort** platform plugin (`cutshort.py`). Now configured as
+  `appknox-(xysec-labs-pte-ltd)-j2I4OU56`.
+- **Fortinet** (was: "no static/rendered signal found, likely bot-protected") — that finding
+  was for Fortinet's own branded domain; Fortinet's REAL careers page runs on **Oracle Fusion
+  Cloud Recruiting** (`edel.fa.us2.oraclecloud.com:CX_2001`), confirmed live with 789-910 open
+  postings — a different-platform resolution, not a bot-protection fix.
+- **WeSecureApp** (was: "rebranded to Strobes Security, new domain not yet found") — found:
+  `strobes.freshteam.com`, now configured on the new **Freshteam** platform plugin.
 
-**New platforms discovered, worth a future dedicated build (like Zoho Recruit was this
-wave) once more companies on them are confirmed:** Avature (Synopsys uses it for their EVP
-site alongside the custom search-jobs micro-site actually built), Freshteam/Freshworks
-(Cyware — public job list not found, `/api/*` paths all `401`), Darwinbox (Seclore — common
-Indian HRMS/ATS, likely to recur in later all-IT waves), Cutshort (Appknox — Indian job-board
-aggregator), Oracle Fusion Cloud Recruiting / `CX_#` URL pattern (JPMorgan Chase confirmed,
-Akamai suspected — distinct from classic Taleo, medium confidence only).
+**Still flagged — no static or rendered signal found, needs a dedicated follow-up pass:**
+Radware, Sophos (fetch consistently failed, likely bot-protected), Wells Fargo, Deutsche Bank,
+SentinelOne's own careers page (note: SentinelOne is already covered via Greenhouse under a
+different board name, `sentinellabs`), Deepfence (bot-challenge blocked), Imperva (old Jobvite
+board dead post-Thales-acquisition, new career site not yet found).
+
+**New platforms discovered in Wave 1 — ALL BUILT in Wave 2 (2026-07-07):** Avature, Freshteam/
+Freshworks, Darwinbox, Cutshort, Oracle Fusion Cloud Recruiting, plus SAP SuccessFactors and
+Rippling ATS (identified independently during Wave 2's own provider-discovery pass) and iCIMS
+(reversing a Wave-1 "HTML-only, needs browser" assessment). See the "Currently built" table at
+the top of this doc for each platform's endpoint pattern and build date; see PLAN.md §9 for
+the full technical decision log of what each discovery pass found and how each plugin works.
 
 ---
 

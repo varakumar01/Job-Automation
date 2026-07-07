@@ -42,6 +42,8 @@ import os
 import re
 import sys
 import urllib.request
+from datetime import date
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -142,6 +144,78 @@ def extract_window_var(html_text: str, name: str) -> object | None:
         return None
 
 
+_VOID_ELEMENTS = frozenset(
+    {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
+)
+
+
+class _ItemPropTextExtractor(HTMLParser):
+    """Collects the plain-text content of every element carrying a given
+    ``itemprop`` attribute (schema.org microdata), tracking same-tag nesting
+    depth so a description block containing nested ``<div>``/``<p>``/``<span>``
+    tags (SAP SuccessFactors' job-detail pages do this) is captured whole
+    instead of truncating at the first nested closing tag of the same name."""
+
+    def __init__(self, itemprop: str):
+        super().__init__(convert_charrefs=True)
+        self._itemprop = itemprop
+        self.segments: list[str] = []
+        self._capturing = False
+        self._tag: str | None = None
+        self._depth = 0
+        self._buf: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if not self._capturing and dict(attrs).get("itemprop") == self._itemprop:
+            if tag in _VOID_ELEMENTS:
+                # A void element (<meta>/<img>/<br>/...) written without a
+                # trailing slash never gets a matching handle_endtag call —
+                # entering "capturing" here would never close, permanently
+                # blocking every later itemprop match for the rest of the
+                # document. There's also no text content on a void element
+                # to collect (data like <meta content="..."> lives in an
+                # attribute, not as child text), so there's nothing lost by
+                # not capturing.
+                self.segments.append("")
+                return
+            self._capturing = True
+            self._tag = tag
+            self._depth = 1
+            self._buf = []
+            return
+        if self._capturing and tag == self._tag:
+            self._depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._capturing and tag == self._tag:
+            self._depth -= 1
+            if self._depth == 0:
+                self.segments.append("".join(self._buf))
+                self._capturing = False
+                self._tag = None
+                self._buf = []
+
+    def handle_data(self, data: str) -> None:
+        if self._capturing:
+            self._buf.append(data)
+
+
+def extract_by_itemprop(html_text: str, itemprop: str) -> list[str]:
+    """Return the plain text of every element with ``itemprop="<itemprop>"``
+    (schema.org microdata, e.g. ``"title"``/``"description"`` on a
+    ``JobPosting``). A page can legitimately repeat the same itemprop across
+    several sections (SuccessFactors splits a job's description into 2-3
+    separate ``itemprop="description"`` spans) — callers needing one string
+    should ``" ".join(...)`` the result themselves. Whitespace is NOT
+    collapsed here (caller decides, e.g. via ``strip_html`` on the joined
+    text, since strip_html's tag-stripping is a harmless no-op on already-
+    tag-free text). Returns ``[]`` if the itemprop never occurs — not an
+    exception, same "try the next tier" contract as the other extractors."""
+    parser = _ItemPropTextExtractor(itemprop)
+    parser.feed(html_text)
+    return parser.segments
+
+
 # ---------------------------------------------------------------------------
 # Shared id derivation
 # ---------------------------------------------------------------------------
@@ -174,12 +248,32 @@ def mmddyyyy_to_iso(raw: str | None) -> str | None:
     if not raw or raw.count("/") != 2:
         return None
     mm, dd, yyyy = raw.split("/")
-    if not (mm.isdigit() and dd.isdigit() and yyyy.isdigit()):
+    if not (mm.isdigit() and dd.isdigit() and len(yyyy) == 4 and yyyy.isdigit()):
         return None
-    mm_i, dd_i = int(mm), int(dd)
-    if not (1 <= mm_i <= 12 and 1 <= dd_i <= 31):
+    try:
+        return date(int(yyyy), int(mm), int(dd)).isoformat()
+    except ValueError:
+        return None  # e.g. day 31 in a 30-day month, or month 13 — not a real date
+
+
+def ddmmyyyy_to_iso(raw: str | None) -> str | None:
+    """Convert a UK/EU-format ``"DD/MM/YYYY"`` date string (seen on SAP
+    SuccessFactors' "Posting Start Date" field) to ISO 8601. Same non-raising
+    contract as ``mmddyyyy_to_iso`` — a malformed date degrades to a missing
+    ``posted_at`` rather than breaking the plugin. Requires a 4-digit year —
+    some SuccessFactors tenant locales render a 2-digit year (e.g. ``"6/8/26"``
+    for a German-locale posting, found live 2026-07-06 on a W.L. Gore
+    apprenticeship listing); a shorter year is ambiguous (is "26" 2026 or
+    1926?) so it's treated as unparsable rather than guessed at."""
+    if not raw or raw.count("/") != 2:
         return None
-    return f"{yyyy}-{mm_i:02d}-{dd_i:02d}"
+    dd, mm, yyyy = raw.split("/")
+    if not (dd.isdigit() and mm.isdigit() and len(yyyy) == 4 and yyyy.isdigit()):
+        return None
+    try:
+        return date(int(yyyy), int(mm), int(dd)).isoformat()
+    except ValueError:
+        return None  # e.g. day 31 in a 30-day month, or month 13 — not a real date
 
 
 # ---------------------------------------------------------------------------
