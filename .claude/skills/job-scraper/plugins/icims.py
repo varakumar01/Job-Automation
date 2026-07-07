@@ -33,9 +33,15 @@ cookies/auth of any kind):
     <h3>Title</h3></a>` blocks — `<ID>` (numeric) is captured straight from the
     URL and used as the posting id (no separate id field exists), prefixed
     `<slug>:<id>` for cross-tenant uniqueness like every other ATS plugin here.
-  - Pagination is via the `pr=<n>` (1-indexed) query param — there is no
-    page-size param and no total-count field to read, so listing simply stops
-    when a page returns zero matched rows or `_MAX_LIST_PAGES` is hit.
+  - Pagination is via the `pr=<n>` query param, **0-indexed** (found live
+    2026-07-07 — `pr=0` and `pr=1` return genuinely different, non-overlapping
+    job sets on every tenant tested, including `here`; three other tenants
+    tested — `c1`, `shure`, `ideagenen` — return ZERO rows at `pr=1` and only
+    have real content at `pr=0`. The loop below starts at page 0, not 1 — an
+    earlier version started at 1, silently skipping every tenant's first page
+    of postings since this plugin was built). There is no page-size param and
+    no total-count field to read, so listing simply stops when a page returns
+    zero matched rows or `_MAX_LIST_PAGES` is hit.
   - The detail page's JSON-LD `JobPosting` block carries the canonical
     `title`/`description`/`jobLocation`(a list of address objects)/`datePosted`
     — all preferred over the list page's bare title when the detail fetch
@@ -99,7 +105,7 @@ def _fetch_candidates(slug: str, query: str) -> list[tuple[str, str, str]]:
     `_MAX_DETAIL_FETCHES` matched candidates have been collected."""
     words = [w.lower() for w in query.split() if len(w) > 1]
     candidates: list[tuple[str, str, str]] = []
-    for page in range(1, _MAX_LIST_PAGES + 1):
+    for page in range(0, _MAX_LIST_PAGES):
         list_url = _LIST_URL.format(slug=slug, page=page)
         list_html = fetch_html(list_url)
         rows = _JOB_ROW_RE.findall(list_html)

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import sys
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -43,8 +44,12 @@ _ENV_VAR = "ASHBY_COMPANIES"
 
 
 def _fetch_company(slug: str) -> list[dict]:
-    """Call the Ashby job-board API for one company and return its job list."""
-    req = urllib.request.Request(_API.format(co=slug), headers=HEADERS)
+    """Call the Ashby job-board API for one company and return its job list.
+    Some real Ashby slugs contain a literal space (e.g. "Redesign Health",
+    found live 2026-07-07) — `urllib.parse.quote` percent-encodes it (and any
+    other URL-unsafe character) before it's interpolated into the request
+    path; a no-op for the common alphanumeric-slug case."""
+    req = urllib.request.Request(_API.format(co=urllib.parse.quote(slug, safe="")), headers=HEADERS)
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     jobs = data.get("jobs")

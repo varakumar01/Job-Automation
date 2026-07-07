@@ -184,6 +184,66 @@ practice — required a template-variance regex fix during the populate pass, se
 
 ---
 
+## Wave 3 — all-IT broadening (2026-07-07)
+
+Owner direction: broaden company scope from cybersecurity-only to **all-IT companies**,
+Hyderabad/Bengaluru unchanged (Pune/Delhi still deferred). Ran a broad first-pass discovery
+across all 17 already-built ATS platforms, live-verifying every candidate (real HTTP request,
+real Bengaluru/Hyderabad-located open posting) before adding — same quality bar as every prior
+wave. **The full, current, authoritative company list is `docs/supported_companies.md`
+(auto-generated via `list_companies.py` — always regenerate after any `.env` change; this
+section is narrative context, not a duplicate source of truth.)**
+
+**Result: 119 → 371 companies** (17 → 18 platforms/plugins counting the one custom Synopsys
+plugin). Per-platform new-company counts: Greenhouse +40, Lever +28, Ashby +28, Workday +24,
+SmartRecruiters +11, Recruitee +4, Workable +9, Zoho Recruit +12, BambooHR +1 (its first-ever
+customer — Atlas Systems, GRC/Oracle/mainframe/SAP IT solutions), Oracle Fusion +7,
+SAP SuccessFactors +0 (re-confirmed structurally poor for this pipeline — see below), Rippling
++16, iCIMS +5, Cutshort +51, Darwinbox +6, Freshteam +10, Avature +0.
+
+**Discovery method by platform group:**
+- **Search-indexed job boards** (Greenhouse/Lever/Ashby/Workday/SmartRecruiters/Recruitee/
+  Workable/Zoho Recruit/Rippling — Rippling's own board pages turned out to be search-indexed
+  too, discovered this wave): reused the proven `site:<platform-domain> "Bengaluru"/"Hyderabad"`
+  bulk technique from the original wave-1 security-only pass, dropping the security-keyword
+  filter for a city filter instead.
+- **No shared indexed domain** (Oracle Fusion, iCIMS, Avature): targeted per-company search.
+  Oracle Fusion's `hcmUI/CandidateExperience` URL segment turned out to be indexed too (bulk-
+  searchable); "Bangalore" (not "Bengaluru") mattered as a keyword — Oracle's location master
+  data still uses the older spelling on many tenants.
+- **Cutshort**: mined the platform's own public `companies-sitemap.xml` (15k+ company URLs)
+  by IT-brand keyword sampling rather than search-engine dorking — much higher yield (+51,
+  the largest single-platform addition) since this is India's own multi-company aggregator.
+- **Darwinbox/Freshteam**: targeted search + brand-name-guess sweeps against known Indian
+  IT/product companies; confirmed Darwinbox's real customer base skews to 250-5,000-employee
+  mid-size Indian enterprises (most guessed big-name brands returned "no such tenant").
+
+**Two real code bugs found and fixed during this pass** (see PLAN.md §9 for full detail):
+1. `icims.py`'s pagination was 1-indexed (`pr=1,2,3,4`) but the platform's real pagination is
+   0-indexed — `pr=0` and `pr=1` return entirely different, non-overlapping job sets on EVERY
+   tenant (confirmed even on the pre-existing `here` tenant, which had been silently missing
+   its whole first page since the plugin was built). Fixed to loop from page 0.
+2. `ashby.py` didn't URL-encode a company's slug before building the request URL — broke on a
+   genuine Ashby company whose real slug contains a literal space ("Redesign Health"). Fixed
+   with `urllib.parse.quote`.
+
+**Notable exclusions (aggregator/staffing-agency trap, same pattern as `jobgether`/
+`weekdayworks` from wave 1):** Lever's `weloglobal` (data-labeling vendor replicating one gig
+role per country) and `weekdayworks`; Ashby's `Fermi AI` (venture-builder posting for several
+unrelated sub-brands) and `Pear-VC` (VC posting for dozens of portfolio companies); Freshteam's
+Recro/T3 Cognito/RemoteStar Global (talent-marketplace platforms posting "on behalf of"
+unrelated clients). Full exclusion reasoning with specifics lives in `.env`'s per-platform
+comment blocks (never committed, but the reasoning is preserved there for future reference).
+
+**SAP SuccessFactors and Avature got zero net-new companies** even at broadened all-IT scope —
+re-confirms SuccessFactors's CSB2 flavor is structurally poor for this pipeline (checked ~50
+cybersecurity vendors in Wave 2, then automotive/industrial/consulting firms in Wave 3, zero
+hits both times), and Avature's every lead this wave hit a wall (wrong URL template, AWS WAF
+block, wrong city, non-IT sector, or a stale posting) — see PLAN.md §9 for the specific
+per-candidate reasoning.
+
+---
+
 ## Hyderabad/Bengaluru company research — Phase 2, wave 1 (2026-07-06)
 
 Ongoing, open-ended effort (no batch cap) to find companies with real Hyderabad/Bengaluru

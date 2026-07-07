@@ -329,6 +329,22 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done (review + test passed).
   platforms (was silently omitting them from `docs/supported_companies.md`). Full company
   list + exclusion reasoning in `docs/job_portals.md`; full technical decision log in §9.
 
+**Phase 12 — Wave 3: all-IT company expansion (owner request 2026-07-07)**
+- [x] Scope broadened from security-first to all-IT across all 17 already-built ATS
+  platforms, Hyderabad/Bengaluru unchanged (Pune/Delhi still deferred) — owner decision, see
+  §9. No new platform-discovery work, config-only populate pass.
+- [x] 4 parallel research batches covering all 17 platforms, each live-verifying every
+  candidate before recommending it. 119 → 371 companies, 17 → 18 platforms/plugins.
+- [x] Two real code bugs found + fixed during the pass (not the original build/review/test
+  loop): `icims.py`'s pagination was 1-indexed but the platform's real pagination is
+  0-indexed, silently skipping every tenant's entire first page since Wave 2 — fixed;
+  `ashby.py` didn't URL-encode a company slug before building the request URL, which would
+  have crashed on a genuine slug containing a literal space — fixed. Both live-reverified,
+  no regression. Full detail in §9.
+- [x] Docs finalized: `docs/supported_companies.md` regenerated (371 companies, 18
+  platforms), `docs/job_portals.md` "Wave 3" section added (methodology + per-platform
+  counts + notable exclusions), PLAN.md §9/§10 updated.
+
 ---
 
 ## §9 Decisions Log  *(append-only; overrides the spec above)*
@@ -850,6 +866,67 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   regression on Xerox). Self-annealing lesson: a single-tenant smoke test during the initial
   build is NOT sufficient proof a scraping regex generalizes — a second real tenant during
   populate is often the first real cross-tenant-variance test a plugin gets. [§4/§10]
+- 2026-07-07 — job-scraper — Wave 3 scope [revises the Wave-2 scope entry] — owner direction:
+  broaden company scope from **security-first to all-IT** ("as it's an ATS expansion, it's
+  anyway easier to add companies via ATS, let's have all IT now via the ATS") across the 17
+  already-built ATS platforms. City scope UNCHANGED — Hyderabad/Bengaluru only, Pune/Delhi
+  still deferred (owner chose the all-IT-broadening option specifically, not the
+  also-broaden-cities option, when asked). No new platform-discovery work — this is a
+  company-discovery + `.env` populate pass on already-built platforms, continuing to apply the
+  existing Bucket A/B/C routing rule for anything that doesn't fit. Confirmed no free public
+  "directory of companies by ATS platform by city" exists (re-checked the Wave-1 finding live)
+  — the only third-party option found, fantastic.jobs, is a paid job-aggregator API outside
+  this project's free-API design; not used. [§4/§10, revises the 2026-07-06 Wave-2 scope entry]
+- 2026-07-07 — job-scraper — Wave 3 populate pass — company discovery ran in 4 parallel research
+  batches (Batch A: Greenhouse/Lever/Ashby; Batch B: Workday/SmartRecruiters/Recruitee/
+  Workable/Zoho Recruit/BambooHR; Batch C: Oracle Fusion/SuccessFactors/Rippling/iCIMS/Avature;
+  Batch D: Cutshort/Darwinbox/Freshteam), each live-verifying every candidate (real HTTP
+  request, real Bengaluru/Hyderabad-located open posting) before recommending it — same quality
+  gate as every prior wave. **Result: 119 → 371 companies, 17 → 18 platforms/plugins** (count
+  includes the one custom Synopsys plugin). Per-platform new-company counts: Greenhouse +40,
+  Lever +28, Ashby +28, Workday +24, SmartRecruiters +11, Recruitee +4, Workable +9, Zoho
+  Recruit +12, BambooHR +1 (FIRST-EVER customer on this platform — Atlas Systems), Oracle Fusion
+  +7, SAP SuccessFactors +0, Rippling +16, iCIMS +5, Cutshort +51 (largest single addition —
+  mined the platform's own public `companies-sitemap.xml`, 15k+ URLs, by IT-brand keyword
+  sampling rather than search-engine dorking), Darwinbox +6, Freshteam +10, Avature +0.
+  Discovery reused the proven wave-1 `site:<platform-domain> "Bengaluru"/"Hyderabad"`
+  search-engine-indexing technique (dropping the security-keyword filter for a city filter) for
+  every platform with a shared indexed job-board domain — this wave discovered Rippling's own
+  board pages are ALSO search-indexed under `ats.rippling.com` (not previously known), and that
+  Oracle Fusion's `hcmUI/CandidateExperience` URL segment is indexed too, plus that Oracle's
+  location master data still tags many tenants "Bangalore" not "Bengaluru" (materially changed
+  yield once tried). Full company list + exclusion reasoning (aggregator/staffing-agency traps,
+  wrong-city, non-IT-sector, dead/stale) lives in `docs/job_portals.md` "Wave 3" section + each
+  platform's `.env` comment block. `docs/supported_companies.md` remains the single
+  auto-generated source of truth for the live company list — `docs/job_portals.md`'s per-
+  platform sections are narrative context, never hand-duplicated. [§4/§8/§10]
+- 2026-07-07 — job-scraper — icims.py pagination bug fix (found during the Wave 3 populate
+  pass, not the original build/review/test loop) — `_fetch_candidates`'s loop was
+  `range(1, _MAX_LIST_PAGES + 1)` (1-indexed: `pr=1,2,3,4`), but iCIMS's real pagination is
+  0-indexed — confirmed live that `pr=0` and `pr=1` return GENUINELY DIFFERENT, non-overlapping
+  20-job sets on every tenant tested, including the pre-existing `here` tenant (meaning this
+  plugin had been silently missing every tenant's entire first page of postings since it was
+  built in Wave 2). Three Wave-3 candidates (`c1`/ConvergeOne, `shure`/Shure, `ideagenen`/
+  Ideagen) return ZERO rows at `pr=1` and ONLY have content at `pr=0` — they would have silently
+  scraped 0 jobs forever under the old code despite being genuinely live, verified tenants.
+  Fixed by changing the loop to `range(0, _MAX_LIST_PAGES)`. Live-reverified after the fix: all
+  3 previously-broken tenants now return real jobs, and `here` gained 20 previously-invisible
+  postings with zero overlap against its old result set (confirmed via id-set diff) — no
+  regression. Self-annealing lesson: a "no results" scrape from a live, verified endpoint should
+  prompt checking the pagination indexing assumption before concluding the tenant has no jobs —
+  a bare curl repro attempt is also vulnerable to iCIMS's own intermittent AWS WAF bot-challenge
+  (the same one that made Peraton unreliable in Wave 2), which can look identical to a real "0
+  results" response; always re-verify through the plugin's own `fetch_html` (proper headers)
+  before trusting a raw curl's negative result. [§4/§10]
+- 2026-07-07 — job-scraper — ashby.py URL-encoding fix (found during the Wave 3 populate pass)
+  — `_fetch_company` interpolated the configured slug directly into the request URL with no
+  escaping; a genuine live Ashby company ("Redesign Health") has a slug containing a literal
+  space, which raised `http.client.InvalidURL` (urllib refuses a raw space in a URL path) —
+  this company was fully verified-live via curl (with the space percent-encoded) but would have
+  crashed the plugin's own fetch if added to `.env` as-is. Fixed by wrapping the slug in
+  `urllib.parse.quote(slug, safe="")` before building the request URL — verified both the
+  space-containing slug and a normal slug (`sarvam`) work correctly after the fix, no
+  regression. [§4/§10]
 
 ---
 
@@ -902,8 +979,10 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
     platform now built, EY itself not re-verified/added since the populate pass found no
     cybersecurity vendors on this specific CSB2 flavor and EY is general-IT/consultancy, tail
     priority).
-  - Live-verified cybersecurity company list (job counts, role-keyword matches, dead/rejected
-    slugs) across all 17 working platforms lives in `docs/job_portals.md`.
+  - Live-verified company list (job counts, role-keyword matches, dead/rejected slugs) across
+    all 17 working ATS platforms lives in `docs/job_portals.md`; the auto-generated, always-
+    current company roster is `docs/supported_companies.md` (371 companies as of 2026-07-07,
+    Wave 3 — scope broadened from cybersecurity-only to all-IT, see §9 2026-07-07 entries).
 - **Easy-apply source (open).** The v1 LinkedIn actor gives no Easy-Apply flag (verified
   2026-07-01). To offer an easy-apply filter later: an actor that outputs `applyType`, or
   detect at apply-time via browser-driving (§11 Option 2).
