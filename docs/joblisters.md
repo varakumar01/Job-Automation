@@ -3,7 +3,7 @@
 Job **listers** are aggregator sites that index jobs from many employers — as opposed to
 individual company career sites (see [job_portals.md](job_portals.md)).
 
-Plugins for job listers live in `.claude/skills/job-scraper/plugins/`.
+Plugins for job listers live in `plugins/` at the repo root (not under `.claude/`).
 
 ## Currently built (plugins live)
 

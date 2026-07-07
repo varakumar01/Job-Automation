@@ -22,12 +22,12 @@ import inspect
 import sys
 from pathlib import Path
 
-# Repo root = .../job-search ; skill dir holds the plugins package.
-SKILL_DIR = Path(__file__).resolve().parent.parent          # .../job-scraper
-ROOT = SKILL_DIR.parent.parent.parent                       # repo root
-for p in (str(ROOT), str(SKILL_DIR)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+# Repo root — the `plugins` package lives at the top level (sibling to
+# `data`/`execution`), not under `.claude` — it's plain scraping code with no
+# Claude-specific dependency, reusable by any orchestrator.
+ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent  # .../job-search
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 

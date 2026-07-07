@@ -23,7 +23,7 @@ from pathlib import Path
 
 # Ensure the repo root is importable so `execution.keypool` resolves even when this
 # module is loaded via the plugins-dir-on-sys.path path.
-_ROOT = Path(__file__).resolve().parents[4]
+_ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 

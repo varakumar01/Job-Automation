@@ -16,7 +16,10 @@ Reads: portals (Apify actors + custom plugins). Writes: `jobs` rows → `scraped
 
 ## How it works
 
-- **Plugins** live in `plugins/` and implement the `JobSourcePlugin` contract
+- **Plugins** live in `plugins/` at the repo root (not under `.claude/` — they're
+  plain scraping code with no Claude-specific dependency, reusable by any
+  orchestrator/LLM, same as the top-level `data/`/`execution/` packages) and
+  implement the `JobSourcePlugin` contract
   (`name`, `is_available()`, `fetch(query, limit, *, location=None)`). The
   `registry.py` auto-discovers every `<site>.py` — **adding a portal = dropping one
   file** (PLAN.md §4). Underscore-prefixed files (`_apify.py`, `_custom_template.py`)

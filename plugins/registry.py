@@ -12,7 +12,7 @@ loads every plugin (and ``base``) by *bare* module name, so there is exactly one
 
 Usage::
 
-    import sys; sys.path.insert(0, ".claude/skills/job-scraper")
+    import sys; sys.path.insert(0, "<repo-root>")  # plugins/ lives at the repo root
     from plugins.registry import discover_plugins, get_plugin
 """
 

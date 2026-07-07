@@ -387,7 +387,7 @@ python3 .claude/skills/job-scraper/scripts/scrape.py --source greenhouse --query
 # 1. Verify the platform's public JSON pattern (see table above) — curl it BEFORE writing
 #    code; several "Pattern" endpoints in earlier passes turned out wrong on contact
 #    (Workday's real page-size cap, Workable's real body shape, Eightfold's 403 gate).
-# 2. Create .claude/skills/job-scraper/plugins/<platform>.py following the
+# 2. Create plugins/<platform>.py (repo root — not under .claude/) following the
 #    greenhouse.py/lever.py/ashby.py/smartrecruiters.py pattern: parse_companies(ENV_VAR)
 #    (or a bespoke parser like parse_workday_companies for multi-part configs) from
 #    _ats_util, round_robin() merge across companies, is_available() gated

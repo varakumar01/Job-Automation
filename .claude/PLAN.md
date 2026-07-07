@@ -100,7 +100,8 @@ Store module (shared utility) exposes: `init_db()`, `upsert_jobs()`,
 
 ## §4 Plugin System (Job Sources) — how to add a portal
 
-Location: `.claude/skills/job-scraper/plugins/`.
+Location: `plugins/` (repo root — moved out of `.claude/` 2026-07-07, see §9; plain
+scraping code with no Claude-specific dependency, sibling to `data/`/`execution/`).
 
 - **`base.py`** defines a `Job` dataclass (normalized schema matching §3) and an
   abstract `JobSourcePlugin`:
@@ -927,6 +928,29 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   `urllib.parse.quote(slug, safe="")` before building the request URL — verified both the
   space-containing slug and a normal slug (`sarvam`) work correctly after the fix, no
   regression. [§4/§10]
+- 2026-07-07 — job-scraper — plugins directory relocated [revises §4's location line] — owner
+  request: moved `plugins/` out of `.claude/skills/job-scraper/` to the REPO ROOT (`git mv`,
+  history preserved). Rationale: the plugins are plain scraping code with no Claude-specific
+  dependency — usable by any orchestrator/LLM, not just Claude Code — and `.claude/` should hold
+  Claude Code configuration (skills, agents, plan files), not general application code. This
+  matches the existing precedent of `data/` (store module) and `execution/` (llm.py,
+  candidate.py, etc.) already being top-level, non-`.claude` packages. Code changes: `_apify_keys.py`'s
+  repo-root path resolution (`Path(__file__).resolve().parents[N]`) updated from `parents[4]` to
+  `parents[1]` (one less directory level to climb from the new location); `scrape.py` simplified
+  — `plugins` is now a top-level package importable once the repo root alone is on `sys.path`,
+  so the separate `SKILL_DIR` sys.path entry it used to need is no longer necessary;
+  `list_companies.py`'s `_PLUGINS_DIR` construction updated to `_REPO_ROOT / "plugins"`. Every
+  individual `<platform>.py` plugin file needed ZERO changes — they all use a self-relative
+  `Path(__file__).resolve().parent` pattern that works correctly regardless of where the folder
+  lives, by design. `.claude/skills/job-scraper/scripts/scrape.py` and `list_companies.py`
+  themselves stay put (only the `plugins/` package moved, not the skill's own scripts).
+  Live-reverified after the move: `scrape.py --list` (27 plugins, no import errors),
+  `list_companies.py` (371 companies, unchanged), a live Ashby scrape (5 jobs), and `scrape.py
+  --keys` (exercises `_apify_keys.py`'s fixed path resolution) — all pass, no regression.
+  Historical §8/§9 log entries referencing the OLD `.claude/skills/job-scraper/plugins/` path
+  are left as-is (append-only convention — they accurately describe what was true on the date
+  logged); only current-state spec references (§4's location line, `CLAUDE.md`, `SKILL.md`,
+  `docs/job_portals.md`, `docs/joblisters.md`) were updated to the new location. [§4]
 
 ---
 

@@ -123,9 +123,10 @@ When building a skill or scraper, follow this process:
    `scripts/`. Run them from the skill folder:
    `python3 .claude/skills/<skill>/scripts/<script>.py`.
 4. **Adding a portal = one plugin file** — new job sources are added by dropping a
-   `<site>.py` into `.claude/skills/job-scraper/plugins/` implementing the
-   `JobSourcePlugin` interface; the registry auto-discovers it. Document the addition
-   in PLAN.md §4 / §10. Never hardcode a portal anywhere else.
+   `<site>.py` into `plugins/` (repo root — not under `.claude/`; plain scraping code
+   with no Claude-specific dependency) implementing the `JobSourcePlugin` interface;
+   the registry auto-discovers it. Document the addition in PLAN.md §4 / §10. Never
+   hardcode a portal anywhere else.
 
 ## Operating Principles
 

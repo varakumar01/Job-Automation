@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-_PLUGINS_DIR = _REPO_ROOT / ".claude" / "skills" / "job-scraper" / "plugins"
+_PLUGINS_DIR = _REPO_ROOT / "plugins"
 for p in (str(_REPO_ROOT), str(_PLUGINS_DIR)):
     if p not in sys.path:
         sys.path.insert(0, p)
