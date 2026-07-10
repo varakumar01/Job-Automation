@@ -108,6 +108,8 @@ class ZohoRecruitPlugin(JobSourcePlugin):
     in ZOHORECRUIT_COMPANIES."""
 
     name = "zoho_recruit"
+    base_url = "*.zohorecruit.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

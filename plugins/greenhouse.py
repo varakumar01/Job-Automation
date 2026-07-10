@@ -75,6 +75,8 @@ class GreenhousePlugin(JobSourcePlugin):
     configured in GREENHOUSE_COMPANIES."""
 
     name = "greenhouse"
+    base_url = "boards-api.greenhouse.io"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

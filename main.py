@@ -121,12 +121,15 @@ def cmd_search(args) -> int:
     env = {"LINKEDIN_POSTED_DAYS": str(args.days)} if args.days else {}
     print(f"Searching {args.source} — {len(queries)} quer(ies) × {len(locations)} location(s), "
           f"last {args.days or '∞'} days, newest-first.")
-    failures = 0
-    for loc in locations:
-        for q in queries:
-            rc = _run(SCRAPE, "--source", args.source, "--query", q,
-                      "--location", loc, "--limit", str(args.limit), env=env)
-            failures += (rc != 0)
+    # One scrape.py invocation covers the whole plugin × query × location matrix —
+    # scrape.py parallelizes across plugins itself (--workers) and prints ONE
+    # consolidated SOURCE REPORT covering every discovered plugin (available or
+    # not), instead of the old per-query×location subprocess loop that only ever
+    # showed whichever single --source was requested (default was `linkedin`,
+    # which is why other aggregators never appeared in the output before).
+    rc = _run(SCRAPE, "--source", args.source, "--queries", args.queries,
+              "--locations", args.locations, "--limit", str(args.limit),
+              "--workers", str(args.workers), env=env)
     # Rank everything just scraped (only NEW rows advance scraped→matched — resumable/
     # incremental: already-applied/ready/rejected jobs are untouched on a re-search).
     _run(MATCH)
@@ -137,7 +140,7 @@ def cmd_search(args) -> int:
               f"(see `main.py rejected`).")
     print("\n" + "=" * 60)
     _print_lists()
-    return 1 if failures else 0
+    return rc
 
 
 def _auto_reject() -> int:
@@ -541,6 +544,31 @@ def cmd_sources(args) -> int:
     return _run(SCRAPE, "--list")
 
 
+def cmd_reset(args) -> int:
+    """Wipe the pipeline back to a clean sheet. Always clears the DB (jobs + runs)
+    and the jobs.json export; --hard also clears tailored/ and applications/."""
+    counts = store.stats()
+    total = sum(counts.values())
+    scope = "DB (jobs + runs) + jobs.json export"
+    if args.hard:
+        scope += " + tailored/ + applications/ (ALL generated résumés and apply artifacts)"
+    if not args.yes:
+        print(f"This will permanently clear: {scope}.")
+        print(f"Current store: {total} job(s) across {len(counts)} status(es) — {counts}")
+        reply = input("Type 'yes' to proceed: ").strip().lower()
+        if reply != "yes":
+            print("Aborted — nothing was cleared.")
+            return 1
+    summary = store.reset(hard=args.hard)
+    print(f"✓ cleared {summary['jobs']} job(s), {summary['runs']} run(s)"
+          f"{' , jobs.json' if summary['jobs_json'] else ''}.")
+    if args.hard:
+        print(f"  hard reset: cleared {summary['tailored_dirs']} tailored/ dir(s), "
+              f"{summary['application_dirs']} applications/ dir(s).")
+    print("Clean sheet — ready for a fresh `main.py search`.")
+    return 0
+
+
 def cmd_stats(args) -> int:
     """Pipeline funnel: job counts per status."""
     counts = store.stats()
@@ -587,11 +615,17 @@ Pipeline runs left to right:
 
 ━━━ SCRAPE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   search        Scrape portals, score every result, auto-reject hard-nos.
+                Ends with a SOURCE REPORT: every discovered plugin, whether it
+                ran, what it found, and why an unavailable one was skipped.
     --queries   Comma-separated role keywords  (e.g. "detection eng,appsec")
     --locations Comma-separated cities         (e.g. "Bangalore,Remote")
-    --source    Portal plugin: linkedin | naukri | indeed | remoteok | all
-    --days N    Recency window (LinkedIn recency filter); omit = no filter
-    --limit N   Max results per query×location  (default 30)
+    --source    Portal plugin name, or 'all' to run every available one
+                  (default: all)
+    --days N    Recency window (LinkedIn's date filter only; other portals
+                  ignore it)                    (default: 7; 0 = no filter)
+    --limit N   Max results per plugin per query×location  (default 30)
+    --workers N Plugins fetched in parallel (a plugin's own query×location
+                  combos still run one at a time)  (default 8)
 
 ━━━ TRIAGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   lists         Show the four classified tiers, best-score-first in each.
@@ -657,6 +691,10 @@ Pipeline runs left to right:
     --llm       Show LLM provider key health instead (auto-rotates on 429)
     --reset     all | exhausted | invalid | <key-hint>
 
+  reset         Wipe the pipeline back to a clean sheet. Asks to confirm.
+    --hard      Also clear tailored/ résumés and applications/ artifacts
+    --yes       Skip the confirmation prompt
+
   report        Build the full application dashboard.
 
 Tip: `main.py <command> -h` shows that command's flags.
@@ -665,8 +703,9 @@ Tip: `main.py <command> -h` shows that command's flags.
 EXAMPLES = """\
 examples:
   # Search & triage
-  main.py search "detection eng,appsec,cloud security" "Bangalore,Remote" --days 14
-  main.py search "security" "" --source remoteok
+  main.py search --queries "detection eng,appsec,cloud security" --locations "Bangalore,Remote" --days 14
+  main.py search --queries "security engineer" --source remoteok    # one portal only
+  main.py search --queries "security engineer" --days 2             # all portals (default)
   main.py lists
   main.py lists --raw
 
@@ -688,11 +727,13 @@ examples:
   main.py reject                                 # park hard-nos
   main.py reject --by-llm                        # use LLM scores to filter
   main.py stats
+  main.py reset                                  # clean-sheet the DB (asks to confirm)
+  main.py reset --hard --yes                     # + wipe tailored/ + applications/, no prompt
 """
 
 
 COMMANDS = ("search", "lists", "prep", "apply", "log", "applied", "report",
-            "reject", "rejected", "keys", "sources", "stats", "rank")
+            "reject", "rejected", "keys", "sources", "stats", "rank", "reset")
 
 
 def _normalize_argv(argv: list[str]) -> list[str]:
@@ -731,6 +772,15 @@ def main(argv=None) -> int:
     p = sub.add_parser("sources")
     p.set_defaults(func=cmd_sources)
 
+    p = sub.add_parser(
+        "reset", help="Wipe the pipeline back to a clean sheet.",
+        description="Clear the job store (and, with --hard, all generated artifacts) "
+                    "back to a clean sheet. Destructive — asks for confirmation unless --yes.")
+    p.add_argument("--hard", action="store_true",
+                   help="also clear tailored/ (résumé variants) and applications/ (apply artifacts)")
+    p.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
+    p.set_defaults(func=cmd_reset)
+
     p = sub.add_parser("stats")
     p.set_defaults(func=cmd_stats)
 
@@ -743,12 +793,25 @@ def main(argv=None) -> int:
     p.add_argument("--save", action="store_true", help="persist llm_score/llm_reason")
     p.set_defaults(func=cmd_rank)
 
-    p = sub.add_parser("search")
-    p.add_argument("--locations", default="Hyderabad,Bengaluru,India")
-    p.add_argument("--queries", default="security engineer,detection engineer,vulnerability")
-    p.add_argument("--days", type=int, default=7)
-    p.add_argument("--limit", type=int, default=30)
-    p.add_argument("--source", default="linkedin")
+    p = sub.add_parser(
+        "search", help="Scrape portals, score every result, auto-reject hard-nos.",
+        description="Scrape portals, score every result, auto-reject hard-nos. "
+                    "Prints a SOURCE REPORT covering every discovered plugin.")
+    p.add_argument("--locations", default="Hyderabad,Bengaluru,India",
+                   help="comma-separated cities, e.g. 'Bangalore,Remote' (default: %(default)s)")
+    p.add_argument("--queries", default="security engineer,detection engineer,vulnerability",
+                   help="comma-separated role keywords (default: %(default)s)")
+    p.add_argument("--days", type=int, default=7,
+                   help="recency window in days, applied to the LinkedIn plugin's date filter "
+                        "(default: %(default)s; other portals ignore this)")
+    p.add_argument("--limit", type=int, default=30,
+                   help="max results per plugin per query×location combo (default: %(default)s)")
+    p.add_argument("--source", default="all",
+                   help="portal plugin name (linkedin/naukri/indeed/remoteok/...) or 'all' "
+                        "to run every available plugin (default: %(default)s)")
+    p.add_argument("--workers", type=int, default=8,
+                   help="max plugins fetched in parallel; a single plugin's own combos still "
+                        "run sequentially (default: %(default)s)")
     p.set_defaults(func=cmd_search)
 
     p = sub.add_parser("lists")

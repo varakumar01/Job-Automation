@@ -77,6 +77,8 @@ class HimalayasPlugin(JobSourcePlugin):
     """Remote-first jobs from himalayas.app via their public JSON API."""
 
     name = "himalayas"
+    base_url = "himalayas.app"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return True  # no token required

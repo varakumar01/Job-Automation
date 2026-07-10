@@ -38,9 +38,14 @@ def _details_on() -> bool:
 
 class NaukriPlugin(JobSourcePlugin):
     name = "naukri"
+    base_url = "naukri.com"
+    mechanism = "apify"
 
     def is_available(self) -> bool:
         return get_token() is not None
+
+    def availability_detail(self) -> str:
+        return "no APIFY_TOKEN in .env"
 
     def fetch(self, query: str, limit: int = 25, *, location: str | None = None) -> list[Job]:
         # Defensive early-out: is_available() already gates the runner, but a

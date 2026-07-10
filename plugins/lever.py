@@ -87,6 +87,8 @@ class LeverPlugin(JobSourcePlugin):
     configured in LEVER_COMPANIES."""
 
     name = "lever"
+    base_url = "api.lever.co"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

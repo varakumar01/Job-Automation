@@ -223,6 +223,8 @@ class CutshortPlugin(JobSourcePlugin):
     in CUTSHORT_COMPANIES."""
 
     name = "cutshort"
+    base_url = "cutshort.io"
+    mechanism = "html"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

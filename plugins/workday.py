@@ -61,6 +61,13 @@ _DETAIL_API = "https://{tenant}.wd{n}.myworkdayjobs.com/wday/cxs/{tenant}/{site}
 _ENV_VAR = "WORKDAY_COMPANIES"
 _PAGE_SIZE = 20  # server-enforced max (verified live 2026-07-05: 21+ -> HTTP 400 on this tenant)
 _MAX_PAGES = 5  # bounds list calls per company to <=100 postings scanned
+_MAX_DETAIL_FETCHES = 20  # bounds real HTTP detail-page fetches per company per call — this
+# plugin was missing the cap every other multi-fetch plugin here has (successfactors.py,
+# remote100k.py's detail cap, etc.): a title-matched company with many postings did a FULL,
+# uncapped detail fetch (one HTTP round trip each) for every single match, found live
+# 2026-07-10 when a 39-tenant WORKDAY_COMPANIES run under the new parallel scraper took
+# minutes longer than every other plugin — a broad query against a company with dozens of
+# matches could do 80-100 sequential detail calls, each up to TIMEOUT seconds.
 
 
 def _fetch_company(tenant: str, wd_num: int, site: str, query: str) -> list[dict]:
@@ -114,6 +121,8 @@ class WorkdayPlugin(JobSourcePlugin):
     configured in WORKDAY_COMPANIES."""
 
     name = "workday"
+    base_url = "*.myworkdayjobs.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return bool(parse_workday_companies(_ENV_VAR))
@@ -137,6 +146,7 @@ class WorkdayPlugin(JobSourcePlugin):
                 print(f"  workday: {tenant}: API fetch failed — {exc}", file=sys.stderr)
                 continue
             company_jobs: list[Job] = []
+            detail_fetches = 0
             for item in items:
                 try:
                     # searchText already filtered server-side; this is a
@@ -145,7 +155,8 @@ class WorkdayPlugin(JobSourcePlugin):
                         continue
                     detail = None
                     external_path = item.get("externalPath")
-                    if external_path:
+                    if external_path and detail_fetches < _MAX_DETAIL_FETCHES:
+                        detail_fetches += 1
                         try:
                             detail = _fetch_detail(tenant, wd_num, site, external_path)
                         except Exception as exc:

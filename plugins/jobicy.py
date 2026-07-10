@@ -70,6 +70,8 @@ class JobicyPlugin(JobSourcePlugin):
     """Remote-first jobs from jobicy.com via their public JSON API."""
 
     name = "jobicy"
+    base_url = "jobicy.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return True  # no token required

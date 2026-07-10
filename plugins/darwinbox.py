@@ -198,6 +198,8 @@ class DarwinboxPlugin(JobSourcePlugin):
     in DARWINBOX_COMPANIES."""
 
     name = "darwinbox"
+    base_url = "*.darwinbox.in"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

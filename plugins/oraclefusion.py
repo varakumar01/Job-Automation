@@ -157,6 +157,8 @@ class OracleFusionPlugin(JobSourcePlugin):
     Recruiting tenant configured in ORACLEFUSION_COMPANIES."""
 
     name = "oraclefusion"
+    base_url = "*.oraclecloud.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return bool(parse_oraclefusion_companies(_ENV_VAR))

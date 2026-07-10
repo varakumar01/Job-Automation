@@ -63,6 +63,8 @@ class ArbeitnowPlugin(JobSourcePlugin):
     """Jobs (EU-heavy, remote + on-site) from arbeitnow.com via their public JSON API."""
 
     name = "arbeitnow"
+    base_url = "arbeitnow.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return True  # no token required

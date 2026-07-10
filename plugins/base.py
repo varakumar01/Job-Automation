@@ -56,6 +56,24 @@ class JobSourcePlugin(abc.ABC):
     #: Stable portal identifier, also stored as ``jobs.source``.
     name: str = ""
 
+    #: Site domain (e.g. "nodesk.co") — shown in the scraper's SOURCE REPORT.
+    #: Optional; plugins should set this for a readable report but nothing
+    #: breaks if left blank.
+    base_url: str = ""
+
+    #: How this plugin fetches jobs — one of "rss", "atom", "json", "html",
+    #: "browser", "apify" (free-form; used for display only in the report).
+    mechanism: str = ""
+
+    #: True if fetch() launches a Playwright *persistent* browser context on
+    #: PLAYWRIGHT_USER_DATA_DIR (the user's logged-in session profile, e.g.
+    #: careerhound/wellfound). Persistent contexts lock their profile
+    #: directory, so two such plugins must never run concurrently — the
+    #: scraper runner serializes any plugin with this flag set via a shared
+    #: lock. Plugins that only launch a FRESH, non-persistent browser (no
+    #: shared profile — e.g. via `_career_util.render_html`) do not need this.
+    uses_persistent_profile: bool = False
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         # Enforce a name on concrete subclasses (abstract intermediates may skip).
@@ -65,6 +83,12 @@ class JobSourcePlugin(abc.ABC):
     @abc.abstractmethod
     def is_available(self) -> bool:
         """True if this plugin can run now (token present, actor/session reachable)."""
+
+    def availability_detail(self) -> str:
+        """Human-readable reason when ``is_available()`` is False (for the SOURCE
+        REPORT). Default is generic; gated plugins should override to name the
+        exact missing dependency (e.g. "no APIFY_TOKEN & no chromium")."""
+        return "check creds"
 
     @abc.abstractmethod
     def fetch(self, query: str, limit: int = 25) -> list[Job]:

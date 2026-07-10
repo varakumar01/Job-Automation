@@ -200,6 +200,8 @@ class SuccessFactorsPlugin(JobSourcePlugin):
     tenant configured in SUCCESSFACTORS_COMPANIES."""
 
     name = "successfactors"
+    base_url = "*.jobs.hr.cloud.sap"
+    mechanism = "html"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

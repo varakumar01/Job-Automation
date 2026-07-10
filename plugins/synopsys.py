@@ -168,6 +168,8 @@ class SynopsysPlugin(JobSourcePlugin):
     """Synopsys career-site postings (Avature, JS-rendered — Tier 3)."""
 
     name = "synopsys"
+    base_url = "careers.synopsys.com"
+    mechanism = "browser"
 
     def is_available(self) -> bool:
         return playwright_available()

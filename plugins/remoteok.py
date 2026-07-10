@@ -98,6 +98,8 @@ class RemoteOKPlugin(JobSourcePlugin):
     """Remote-first jobs from remoteok.com via their public JSON API."""
 
     name = "remoteok"
+    base_url = "remoteok.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return True  # no token required

@@ -149,6 +149,8 @@ class RipplingPlugin(JobSourcePlugin):
     configured in RIPPLING_COMPANIES."""
 
     name = "rippling"
+    base_url = "ats.rippling.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

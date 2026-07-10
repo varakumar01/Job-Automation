@@ -230,6 +230,67 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done (review + test passed).
   rejected; tested on a temp DB (job 1 applied; real DB untouched). Review+test running.
 
 **Phase 10 — Orchestrator + control panel (`main.py`)**  *(owner request 2026-06-30)*
+- [x] **Search transparency + `--reset` + parallel scraping** *(owner request 2026-07-10:
+  "I never seen any stats about other aggregators getting scrapped" / "lets use multi
+  threading... wait for all the processes to complete" / "lets have options --reset" /
+  "always make a proper help page!")*: root cause of the missing-aggregator-stats
+  complaint — `main.py search`'s `--source` defaulted to `linkedin` (only one portal),
+  and `cmd_search` spawned one `scrape.py` subprocess per query×location combo, each
+  scoped to that single source; the ~35 other plugins never ran unless `--source all`
+  was passed explicitly, and even then unavailable/errored plugins vanished from output
+  with no reason shown. Fixed:
+  - `plugins/base.py`: `JobSourcePlugin` gained `base_url`, `mechanism`, and
+    `availability_detail()` (default `"check creds"`, overridden on the 6 gated plugins —
+    `linkedin`/`naukri`/`indeed`/`wellfound`/`careerhound`/`nextgenenergyjobs` — to name
+    the exact missing dependency). Populated on all ~39 discovered plugins.
+  - `scrape.py` rewritten: single-process plugin×query×location matrix (new
+    `--queries`/`--locations`, comma lists), fetched via `ThreadPoolExecutor`
+    (`--workers`, default 8) — one thread per plugin, each plugin's own combos still
+    sequential (politeness, never hit one domain concurrently). DB upserts serialized
+    on the main thread only after every fetch thread finishes. Ends every run with a
+    SOURCE REPORT covering every discovered plugin (available or not) — domain,
+    mechanism, outcome (✓ ok/◐ partial/∅ empty/✗ error/⚠ unavailable+reason). Live
+    per-plugin progress prints by default (not `-v`-gated) since a full run can take
+    minutes.
+  - `main.py`: `search --source` default `linkedin` → `all`; `cmd_search` now makes ONE
+    `scrape.py` call instead of the old per-combo subprocess loop; new `--workers`
+    passthrough. New `reset` command (`store.reset(hard)`): clears `jobs`+`runs` tables +
+    `jobs.json`, confirms interactively unless `--yes`; `--hard` also empties `tailored/`
+    + `applications/`. Every subparser + the hand-written `HELP_DESC`/`EXAMPLES` block
+    reviewed and corrected (stale `--days` doc, invalid positional-arg EXAMPLES that never
+    matched the real argparse flags, undocumented commands).
+  - `data/store.py`: `connect()` gained WAL mode + 30s busy timeout; new `reset()`.
+  - **Bugs found live during this work** (not pre-existing findings, discovered by
+    actually running `--source all` end-to-end for the first time): (1) `wellfound.py`
+    and `careerhound.py` both launch a Playwright *persistent* context on the same
+    `PLAYWRIGHT_USER_DATA_DIR` profile — running them concurrently (as the new threading
+    does) hung on the profile lock; fixed with a `uses_persistent_profile` flag +
+    `scrape.py`-level lock that only engages when that profile dir actually exists
+    (narrowed further after review — see below). (2) `workday.py` had NO cap on
+    detail-page fetches (every other multi-fetch plugin, e.g. `successfactors.py`, caps
+    at `_MAX_DETAIL_FETCHES=20`) — for a broad query against a large tenant (e.g. Cisco,
+    live-verified: `searchText` server-side matching is loose and the shared `matches()`
+    helper is substring-OR, so "Engineering" trivially matches "engineer"), this did an
+    unbounded number of sequential detail HTTP calls per company; fixed with the same
+    `_MAX_DETAIL_FETCHES=20` cap. Even fixed, `workday`/`greenhouse`/`lever` (39/75/44
+    configured companies, each a sequential per-company HTTP round trip) remain the
+    slowest plugins in a `--source all` run — inherent to the many-company ATS-plugin
+    design (not a threading bug), flagged in §10 as a possible follow-up (parallelize
+    company iteration WITHIN a plugin).
+  - Review+test loop PASSED. code-tester 13/13 (reset confirm/abort/`--yes`/`--hard`,
+    post-reset empty stats, help pages, `--list` reasons, unknown-source error,
+    missing-query error, multi-query×location matrix) — real DB backed up before
+    destructive tests, restored and verified after. code-reviewer PASS; 1 MAJOR fixed
+    (`store.reset()` crashed if `sqlite_sequence` didn't exist yet — fresh/never-inserted
+    DB; guarded with an existence check) + 3 MINOR fixed (`connect()` docstring wrongly
+    implied worker threads write to the DB; `_PROFILE_LOCK` coarsely serialized
+    wellfound's entire fetch including its Apify-only path that never touches the shared
+    profile — narrowed to only lock when `PLAYWRIGHT_USER_DATA_DIR` actually exists;
+    `successfactors.py`'s `base_url` named the wrong domain, `*.successfactors.com`
+    instead of the real `*.jobs.hr.cloud.sap`) + 1 NIT (pointless f-string in
+    `careerhound.py`). Live-reverified end-to-end: `main.py search --source arbeitnow
+    --queries "security engineer" --locations Remote --limit 2` → single scrape.py call →
+    SOURCE REPORT → matcher → auto-reject → classified lists, all correctly chained.
 - [~] `main.py` single entrypoint: `search` (multi-area/query/`--days`, newest-first),
   `lists` (eligible-as-is vs needs-mod), `prep --llm claude|grok|api [--modify-resume]`,
   `apply`, `log --screenshot`, `report` (dashboard + `applications/<id>/` artifacts), plus
@@ -286,12 +347,65 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done (review + test passed).
 - [x] **RemoteOK** (`plugins/remoteok.py`): Public JSON API (`remoteok.com/api?tag=`), pure stdlib `urllib`, no Apify. Server-side `?tag=` pre-filter + client-side keyword filter across HTML-stripped title/tags/description. `html.unescape` applied, `<script>`/`<style>` content stripped. `is_available=True` always. 5 live jobs fetched + stored in integration test. Review: FAIL→fixed (2 MAJOR: empty-word-list silent discard + HTML entities not decoded; 1 MINOR: `or ""` drops id=0; 1 MINOR: filter on raw HTML; 1 NIT: script/style content). Re-tested: 7/7 PASS.
 - [ ] **We Work Remotely** — research pending
 - [ ] **Google Jobs** (Apify)
-- [ ] **Wellfound** (Apify)
+- [x] **Wellfound** (`plugins/wellfound.py`, 2026-07-10): Apify actor `thirdwatch/wellfound-jobs-scraper`
+  PRIMARY (no public API/RSS/sitemap — DataDome+Cloudflare gate `/jobs.rss` and `/sitemap.xml`
+  to 403, verified live) + logged-in Playwright-session FALLBACK (generic href-pattern
+  extraction — real DOM markup unverified, login-gated). See §9 2026-07-10.
 - [ ] **Dice** (Apify)
 - [ ] **Glassdoor** (Apify)
 - [ ] **YC Work at a Startup** (Apify or Playwright)
 - [ ] **Hirist** (Playwright/session)
 - [ ] **Instahyre** (Playwright/session)
+- [ ] **remote.co** — deferred (owner request 2026-07-10): Cloudflare + FlexJobs-paywall gated,
+  every `fetch_html` attempt timed out live; no RSS/API/sitemap found. Low ROI vs. fragility;
+  revisit only if a specific need arises.
+
+**New joblister plugins (owner request 2026-07-10)** — all live-verified + smoke-tested via
+`scrape.py --source <name> --limit 3`, real rows confirmed in `data/jobs.db`:
+- [x] **Working Nomads** (`plugins/workingnomads.py`): public JSON API
+  (`workingnomads.com/api/exposed_jobs/`), no token, no server search (client-filtered).
+- [x] **Best PM Jobs** (`plugins/bestpmjobs.py`): Jobboardly RSS feed (`/jobs.rss`); title
+  parsed as `"{Role} - {Company} - {Location}"`.
+- [x] **SkipTheDrive** (`plugins/skipthedrive.py`): NO working RSS of any kind (feed disabled
+  site-wide, verified live) — scrapes the server-rendered `?s=<query>` search-results HTML
+  directly instead; `location` hardcoded `"Remote"` (board is remote-only by definition).
+- [x] **NoDesk** (`plugins/nodesk.py`): RSS feed (`/remote-jobs/index.xml`); feed embeds raw
+  (non-CDATA) HTML entities that are invalid strict XML — fixed generically in
+  `_joblister_util.parse_feed` (see §9 2026-07-10), not special-cased here.
+- [x] **Remote100k** (`plugins/remote100k.py`): sitemap (`/sitemap.xml`, flat `<urlset>`) →
+  `/remote-job/<slug>` pages → `JobPosting` ld+json (Tier 2, no render needed). `jd_text` is a
+  short teaser only (site doesn't host the full JD); `Job.url` points to the real employer
+  posting (Greenhouse/Workday/...) found via the page's own external "Apply" link, not the
+  remote100k teaser page.
+- [x] **NextGen Energy Jobs** (`plugins/nextgenenergyjobs.py`): sitemap INDEX (`/sitemap.xml` →
+  `job_openings_*.xml` children) → Next.js App-Router pages needing a Tier-3 headless render
+  (no `__NEXT_DATA__`/ld+json — data streams via RSC payload); fields parsed from a bounded
+  window after `<h1>` via `lucide-*` icon-class markers. Site's WAF blocked Playwright's
+  default headless UA fingerprint — see §9 2026-07-10 `render_html` fix.
+- [x] **Relocate.me** (`plugins/relocateme.py`): sitemap (`/sitemap.xml`) filtered to
+  trailing-numeric-id URLs → `JobPosting` ld+json (Tier 2). ld+json failed strict `json.loads`
+  (literal control chars in `description`) — fixed generically in `_career_util.extract_ld_json`
+  (see §9 2026-07-10). Title/description are double-HTML-escaped; unescaped twice before
+  `strip_html`.
+- [x] **Jobs in Education** (`plugins/jobsineducation.py`): SmartJobBoard RSS
+  (`/feeds/rss.xml`); company from `dc:creator`, location best-effort-extracted from the
+  description's leading text when the company name appears near the start.
+- [x] **Rejobs** (`plugins/rejobs.py`): Atom feed (`/en/rss/renewable-energy-jobs`); title
+  parsed as `"{Role} - {Company}"`, `ext_id` from the Atom `<id>` (short numeric URL, distinct
+  from `<link>`).
+- [x] **We Love Product** (`plugins/weloveproduct.py`): public JSON API (`/api/jobs`);
+  unauthenticated calls only return page 1 (~32 latest of the true total — deeper pages 401).
+- [x] **CareerHound** (`plugins/careerhound.py`): session-gated Playwright (same
+  `PLAYWRIGHT_USER_DATA_DIR` model as the custom-plugin template) — entirely login-gated site,
+  no public preview/API/RSS/sitemap found; generic href-pattern card extraction since the real
+  in-app markup could not be inspected without a live login. **Needs live-session verification
+  on first real use** (self-anneal per SKILL.md) — see plugin docstring.
+- [x] **Indeed reworked to browser-first** (`plugins/indeed.py`, owner request 2026-07-10):
+  primary fetch is now a headless-browser scrape of the search-results page (parses the
+  `providerData["mosaic-provider-jobcards"]` JS blob via `JSONDecoder.raw_decode`, no Apify
+  cost); the original Apify actor (`borderline/indeed-scraper`) is kept as an automatic
+  fallback when the browser path is unconfigured/blocked/empty. Toggles:
+  `INDEED_USE_BROWSER`, `INDEED_APIFY_FALLBACK` (both default on). See §9 2026-07-10.
 - [x] **Cutshort** — built 2026-07-07 as a Tier-1 JSON-embedded-in-HTML ATS-platform plugin
   (`cutshort.py`), NOT Playwright/session as originally predicted here — see Phase 11 below.
 
@@ -951,6 +1065,148 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   are left as-is (append-only convention — they accurately describe what was true on the date
   logged); only current-state spec references (§4's location line, `CLAUDE.md`, `SKILL.md`,
   `docs/job_portals.md`, `docs/joblisters.md`) were updated to the new location. [§4]
+- 2026-07-10 — job-scraper — 11 new joblister plugins added (owner request) — Working Nomads,
+  Best PM Jobs, SkipTheDrive, NoDesk, Remote100k, NextGen Energy Jobs, Relocate.me, Jobs in
+  Education, Rejobs, We Love Product, CareerHound. All Bucket-B listers (one plugin = one
+  board indexing many employers), cloning the existing public-feed pattern
+  (`_joblister_util.py`/`_career_util.py`) — no registry/store changes needed (auto-discovery).
+  Two sites the owner also named were resolved as follows: **startupers.com dropped** — its
+  original startup-jobs board has shut down; the domain now hosts an unrelated "AI Agent
+  Job Marketplace" (lists AI agents, not human postings) — no plugin built.
+  **skillset.co dropped** — Cloudflare-blocked (403) and its identity could not be verified
+  (the name maps to several unrelated sites: IT-cert prep, staffing agencies); skipped rather
+  than guessing. **remote.co deferred** to the §10/§8 backlog — Cloudflare + FlexJobs-paywall
+  gated, every fetch attempt timed out live, no RSS/API/sitemap found; low ROI vs. fragility.
+  Live-verified per-site access method (2026-07-10): Working Nomads = public JSON API
+  (`/api/exposed_jobs/`); Best PM Jobs = Jobboardly RSS (`/jobs.rss`); SkipTheDrive = NO
+  working RSS (feed disabled site-wide — every `/feed`/`/?feed=rss2`/category-feed path
+  silently returns the homepage HTML, not XML) so it scrapes the server-rendered `?s=<query>`
+  search-results HTML directly instead; NoDesk = RSS (`/remote-jobs/index.xml`); Remote100k =
+  sitemap (`/sitemap.xml`) → `/remote-job/<slug>` pages with `JobPosting` ld+json (no render
+  needed — `robots.txt` disallows `/api/`, honored, not hit); NextGen Energy Jobs = sitemap
+  INDEX (`/sitemap.xml` → `job_openings_*.xml` children) → Next.js pages needing a Tier-3
+  headless render (no ld+json/`__NEXT_DATA__` — data streams via RSC payload); Relocate.me =
+  sitemap (`/sitemap.xml`, filtered to trailing-numeric-id URLs) → `JobPosting` ld+json;
+  Jobs in Education = SmartJobBoard RSS (`/feeds/rss.xml`); Rejobs = Atom feed
+  (`/en/rss/renewable-energy-jobs`); We Love Product = public JSON API (`/api/jobs`,
+  unauthenticated calls capped at page 1 / ~32 of the true total — deeper pages 401);
+  CareerHound = entirely login-gated (every unauthenticated route 404s, no public
+  preview/API/RSS/sitemap), built as a session-gated Playwright plugin (same
+  `PLAYWRIGHT_USER_DATA_DIR` model as the custom-plugin template) with GENERIC href-pattern
+  card extraction rather than unverifiable hardcoded selectors — **flagged as needing live
+  verification** the first time a real logged-in session is available (self-anneal per
+  SKILL.md); a wrong-guess selector would otherwise silently return 0 rows forever. [§4/§8/§10]
+- 2026-07-10 — job-scraper — Indeed reworked to browser-first with Apify fallback (owner
+  request) [revises the 2026-06-30 Apify-only Indeed decision] — primary fetch is now a
+  headless-browser scrape of `indeed.com/jobs?q=...&l=...` (a plain `fetch_html` request gets
+  HTTP 403, but a Playwright render succeeds — see the `render_html` UA fix below); the
+  results are embedded as a JS object assigned to
+  `providerData["mosaic-provider-jobcards"]` inside a `<script>` tag — too deeply nested for
+  a non-greedy regex, so extracted via `json.JSONDecoder().raw_decode(html, idx)` instead
+  (parses one complete JSON value and ignores trailing script content, unlike a plain
+  `json.loads` which raises "Extra data"). Card fields verified live: `jobkey` (stable id),
+  `viewJobLink` (relative detail URL), `company`, `displayTitle`, `formattedLocation`,
+  `createDate` (epoch MILLISECONDS — divided by 1000 before `epoch_to_iso`), `snippet` (short
+  HTML teaser, not the full JD). The original Apify actor (`borderline/indeed-scraper`) is
+  kept as an automatic fallback — triggered when the browser path is unconfigured
+  (`playwright_available()` False), raises, or returns 0 rows. New `.env` toggles:
+  `INDEED_USE_BROWSER` (default `1`), `INDEED_APIFY_FALLBACK` (default `1`, set `0` to forbid
+  any Apify spend on this portal). Live-verified: browser path alone returned 3 real jobs with
+  full `jd_text`/correct fields with no Apify token spent; forcing `INDEED_USE_BROWSER=0`
+  correctly fell through to the Apify path and surfaced a real "all keys exhausted/invalid"
+  error rather than crashing (the configured tokens happened to be dead at test time — proves
+  the fallback wiring, not actor health). [§4/§9 2026-06-30 entry]
+- 2026-07-10 — job-scraper — Wellfound added as Apify-primary + session-fallback (owner
+  request) — no direct-fetch path exists: `/jobs.rss` and `/sitemap.xml` both 403 live
+  (DataDome + Cloudflare), no public JSON API, GraphQL needs a live session's CSRF token, and
+  filtered search is login-gated. Built as a two-tier plugin (`plugins/wellfound.py`): PRIMARY
+  = Apify actor `thirdwatch/wellfound-jobs-scraper` (override `APIFY_ACTOR_WELLFOUND`,
+  ~$0.004-0.008/result, bypasses DataDome on Apify's infra) — input/output field names are
+  from the actor's published docs, **NOT live-verified against a real run** (no Apify token
+  available in the build environment); FALLBACK = logged-in Playwright session (same
+  `PLAYWRIGHT_USER_DATA_DIR` model as CareerHound) with generic href-pattern extraction, used
+  only when no Apify token is configured or the actor call fails/returns 0 rows. `is_available()`
+  is True if EITHER tier is usable. **Both tiers need live re-verification** (actor
+  field-mapping against `Job.extra`; session-path selectors against real DOM) the first time
+  each actually runs — self-anneal per SKILL.md. [§4/§8/§10]
+- 2026-07-10 — job-scraper — two generic bug fixes to shared plugin helpers, surfaced while
+  building the above (both are library-level fixes benefiting any current/future plugin, not
+  special-cased to one site): (1) `_joblister_util.parse_feed` now retries a failed
+  `ET.fromstring` after repairing non-XML-standard named HTML entities (`&rsquo;`, `&ndash;`,
+  `&hellip;`, ...) via a new `_repair_html_entities` helper — found on NoDesk's feed, which
+  embeds raw HTML entities in `<description>` without CDATA-wrapping them (invalid strict XML;
+  the feed silently parsed to 0 items with no error before this fix). Numeric character refs
+  and the 5 XML-predefined entities are left untouched. (2) `_career_util.extract_ld_json` now
+  parses with `json.loads(..., strict=False)` — found on relocate.me's `JobPosting` block,
+  which embeds a literal (unescaped) newline inside its `description` string, invalid strict
+  JSON; the block silently vanished (caught by the existing except) before this fix, leaving
+  only an unrelated `BreadcrumbList` block. (3) `_career_util.render_html` now sets a
+  realistic desktop-Chrome `user_agent` by default (override via the new `user_agent` param) —
+  found on nextgenenergyjobs.com, whose WAF returned a bare "Forbidden" body to Playwright's
+  default UA (which contains `HeadlessChrome/...`) even though a plain non-JS `fetch_html`
+  request to the same URL succeeded; re-verified this doesn't regress `synopsys.py` (still
+  scrapes correctly with the new default UA). [§4]
+- 2026-07-10 — job-scraper — review+test loop fixes for the 12 new plugins above (code-reviewer
+  FAIL→fixed, code-tester PASS with 1 MINOR note). (1) MAJOR: `careerhound.py`'s `fetch()`
+  could raise an uncaught `ImportError` if `PLAYWRIGHT_USER_DATA_DIR` was set but chromium
+  wasn't installed — violated the "never raise out of fetch()" contract every other plugin
+  honors. Fixed by adding `playwright_available()` to `is_available()` and moving the
+  `sync_playwright` import inside the existing try block; also removed the plugin's unused
+  `location` kwarg (accepted but never wired to the unverified search URL — misleading API
+  surface). (2) MINOR: `skipthedrive.py`'s title-link regex used `.match()` (anchored to
+  position 0 of each `&lt;h2&gt;`-split chunk), which would silently break on any whitespace
+  between the marker and the `&lt;a&gt;` tag; changed to `.search()`. (3) MINOR:
+  `remote100k.py`'s `_find_apply_url` took the first external link on the page, which could
+  match a company-website/social/GitHub link before the real "Apply" button; changed to
+  prefer the site's own `?ref=remote100k` tracking param (falling back to the old deny-list
+  heuristic only if absent). Fixing this surfaced a second, pre-existing bug: the raw
+  `href="..."` attribute value is HTML-escaped (`&amp;` for a literal `&` in a multi-param
+  query string, e.g. `?gh_jid=123&amp;ref=remote100k`) — the apply-URL regex didn't match
+  the escaped separator at all (silently falling through to the fallback every time), AND
+  the matched URL wasn't unescaped before storing, corrupting `Job.url`'s query string
+  live-verified on a real Pinterest/Greenhouse posting. Fixed both: regex now matches
+  `(?:[?&]|&amp;)ref=remote100k`, and the result is run through `html.unescape`. (4) MINOR:
+  `wellfound.py`'s session-fallback path silently dropped the `location` filter (accepted by
+  `fetch()`, passed to the Apify tier, but never threaded into `_fetch_via_session`'s search
+  URL); fixed by threading it through and appending a best-effort `location=` query param.
+  Noted but NOT changed: `wellfound.is_available()` reflects Apify token *presence*, not
+  *health* (a fully dead key pool still reports available) — this exactly matches the
+  existing convention in `indeed.py`/`linkedin.py`/`naukri.py`, so it's consistent
+  cross-codebase behavior, not a new inconsistency; the real health check happens inside
+  `run_actor`'s key rotation and degrades gracefully (verified in the Indeed forced-fallback
+  test). All fixes re-verified live post-fix: `plugins/registry.py` (39 plugins, no import
+  errors), `careerhound` still correctly reports unavailable/returns `[]`,
+  `skipthedrive`/`remote100k` re-scraped cleanly with corrected URLs. [§4]
+- 2026-07-10 — main.py/scrape.py — `search --source` default — **`all`**, not `linkedin`
+  (owner request: "I never seen any stats about other aggregators getting scrapped").
+  `--source linkedin`/`--source <name>` still narrows to one portal on demand. [§8, revises
+  the original `main.py search` default set 2026-06-30]
+- 2026-07-10 — scrape.py — scraping concurrency — **thread pool, one worker per plugin**
+  (`--workers`, default 8); a single plugin's own query×location combos stay sequential
+  (owner request: "lets use multi threading to get all the data faster... wait for all the
+  processes to complete to further proceed"). DB upserts are serialized on the main thread
+  only after every fetch thread finishes — never concurrent writers, and nothing downstream
+  (the matcher) starts before the full matrix is done. [§8]
+- 2026-07-10 — scrape.py — cross-plugin resource contention — plugins that launch a
+  Playwright **persistent** browser context on the shared `PLAYWRIGHT_USER_DATA_DIR`
+  profile (`wellfound.py`, `careerhound.py`) must never run concurrently — a new
+  `uses_persistent_profile` flag on `JobSourcePlugin` + a `scrape.py`-level lock enforces
+  this, engaged only when that profile dir actually exists (so it costs nothing when no
+  session is configured). Any future plugin sharing that profile must set the flag too.
+  [§4, found live 2026-07-10 — see §8 Phase 10]
+- 2026-07-10 — job-scraper — `main.py reset` (new command) — clears the `jobs`+`runs`
+  tables and `jobs.json` export; `--hard` also empties `tailored/` + `applications/`
+  (owner request: "lets have options --reset to reset the data collected and make a clean
+  sheet"). Interactive confirmation required unless `--yes`. Schema/DB file are NOT
+  dropped — only rows and generated files, so `init_db()` still works immediately after.
+  [§3, new surface]
+- 2026-07-10 — job-scraper — per-source transparency — every `scrape.py` run ends with a
+  SOURCE REPORT covering **every discovered plugin**, available or not (domain, fetch
+  mechanism, outcome + reason) — an unavailable/errored plugin must never silently vanish
+  from the output the way it did before (owner request: "I should be able to understand
+  whats going on! and do all websites work or not just by the output! and which domain
+  responded in which way"). Live per-plugin progress prints by default (not gated behind
+  `-v`) since a full run can take several minutes. [§8]
 
 ---
 
@@ -970,6 +1226,19 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
 
 ## §10 Future Portals / Open Questions
 
+- **Within-plugin company parallelism (flagged 2026-07-10, not yet built).** The
+  multi-company ATS plugins (`greenhouse.py` 75 companies, `lever.py` 44, `workday.py` 39,
+  and similar) iterate their configured companies sequentially inside `fetch()` — real
+  per-company HTTP round trips, individually fast (~1-2s) but additive. Under the new
+  parallel-plugin `scrape.py` (§8 Phase 10), these are now consistently the slowest
+  plugins in a `--source all` run since every OTHER plugin finishes in parallel around
+  them. `workday.py` specifically also does a detail-page fetch per matched posting
+  (`_MAX_DETAIL_FETCHES=20` cap, added 2026-07-10 after finding it was previously
+  uncapped) — for a large company with a loosely-matching query, this alone can be
+  20-40s. A future pass could parallelize the per-company loop WITHIN each plugin (its
+  own small thread pool, or a shared one passed in from the runner) — deferred for now
+  since it touches ~16 already-reviewed plugin files for a performance win, not a
+  correctness fix.
 - **Portal-plugin design (approved 2026-07-01, build = follow-up).** Broaden sourcing via
   the existing §4 plugin system (`JobSourcePlugin` + `registry.py` auto-discovery = the
   "common manager + minimal per-portal plugin" the owner wants). Recommended, in priority:
@@ -991,7 +1260,8 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
     to unlock real server-rendered rows on the SAME endpoint. Each plugin returns normalized
     `Job`s with the **job-detail link in `Job.url`** (NOT the apply-button link).
   - **Aggregators** (one plugin = many companies), via Apify or public API: **Foundit/Monster,
-    Instahyre, Hirist, Wellfound, Internshala** (like the existing Naukri plugin).
+    Instahyre, Hirist, Internshala** (like the existing Naukri plugin). **Wellfound BUILT
+    2026-07-10** (`plugins/wellfound.py`, Apify-primary + session-fallback — see §9 2026-07-10).
   - **Owner's 7 sites — RESOLVED 2026-07-05, 2 more resolved 2026-07-07 (Wave 2):**
     Qualcomm→Eightfold (still blocked, see above), Simbian→Zoho Recruit (confirmed,
     deferred/OAuth), cyber-times.in/jobs→**OFFLINE** (impersonation probe, skipped),

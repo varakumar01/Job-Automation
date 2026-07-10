@@ -179,6 +179,8 @@ class FreshteamPlugin(JobSourcePlugin):
     in FRESHTEAM_COMPANIES."""
 
     name = "freshteam"
+    base_url = "*.freshteam.com"
+    mechanism = "html"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

@@ -101,6 +101,8 @@ class WorkablePlugin(JobSourcePlugin):
     configured in WORKABLE_COMPANIES."""
 
     name = "workable"
+    base_url = "apply.workable.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

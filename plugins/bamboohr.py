@@ -108,6 +108,8 @@ class BambooHRPlugin(JobSourcePlugin):
     configured in BAMBOOHR_COMPANIES."""
 
     name = "bamboohr"
+    base_url = "bamboohr.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

@@ -103,6 +103,8 @@ class SmartRecruitersPlugin(JobSourcePlugin):
     company configured in SMARTRECRUITERS_COMPANIES."""
 
     name = "smartrecruiters"
+    base_url = "api.smartrecruiters.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

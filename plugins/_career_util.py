@@ -42,6 +42,7 @@ import os
 import re
 import sys
 import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import date
 from html.parser import HTMLParser
 from pathlib import Path
@@ -78,6 +79,60 @@ def fetch_json(url: str, *, timeout: int = TIMEOUT, headers: dict | None = None)
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _local_tag(tag: str) -> str:
+    """Strip a namespace prefix off an ElementTree tag: '{ns}url' -> 'url'."""
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def parse_sitemap(xml_text: str) -> list[str]:
+    """Return the ``<loc>`` URLs from a sitemap ``<urlset>`` (a leaf sitemap
+    listing individual pages, e.g. job postings). Namespace-tolerant; returns
+    ``[]`` on unparsable XML or a non-``urlset`` document (e.g. a sitemap
+    index — use :func:`parse_sitemap_index` for those) rather than raising."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return []
+    if _local_tag(root.tag) != "urlset":
+        return []
+    urls: list[str] = []
+    for url_el in root:
+        if _local_tag(url_el.tag) != "url":
+            continue
+        for child in url_el:
+            if _local_tag(child.tag) == "loc":
+                loc = (child.text or "").strip()
+                if loc:
+                    urls.append(loc)
+                break
+    return urls
+
+
+def parse_sitemap_index(xml_text: str) -> list[str]:
+    """Return the child sitemap URLs from a sitemap ``<sitemapindex>`` (the
+    top-level document some sites use to fan out to per-category leaf
+    sitemaps, e.g. ``job_openings_1.xml``). Namespace-tolerant; returns
+    ``[]`` on unparsable XML or a non-``sitemapindex`` document rather than
+    raising."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return []
+    if _local_tag(root.tag) != "sitemapindex":
+        return []
+    urls: list[str] = []
+    for sitemap_el in root:
+        if _local_tag(sitemap_el.tag) != "sitemap":
+            continue
+        for child in sitemap_el:
+            if _local_tag(child.tag) == "loc":
+                loc = (child.text or "").strip()
+                if loc:
+                    urls.append(loc)
+                break
+    return urls
+
+
 # ---------------------------------------------------------------------------
 # Tier 2: JSON blob embedded in server-rendered HTML.
 # ---------------------------------------------------------------------------
@@ -109,11 +164,19 @@ def extract_next_data(html_text: str) -> object | None:
 def extract_ld_json(html_text: str, *, ld_type: str | None = None) -> list:
     """Pull all ``application/ld+json`` script blocks, optionally filtered to
     a given ``@type`` (e.g. ``"JobPosting"``). Returns a list (possibly
-    empty) rather than None/single-item, since a page can embed several."""
+    empty) rather than None/single-item, since a page can embed several.
+
+    Parsed with ``strict=False`` (allows literal control characters inside
+    JSON strings) — found live 2026-07-10 on relocate.me, whose JobPosting
+    block embeds a raw newline/tab inside the ``description`` string instead
+    of an escaped ``\\n``/``\\t``. That's invalid strict JSON but a real,
+    common markup quirk; without this, the block silently vanished (caught
+    by the ``except`` below) with no error, and only the page's unrelated
+    ``BreadcrumbList`` block survived."""
     out: list = []
     for m in _LD_JSON_RE.finditer(html_text):
         try:
-            data = json.loads(m.group(1))
+            data = json.loads(m.group(1), strict=False)
         except (json.JSONDecodeError, ValueError):
             continue
         candidates = data if isinstance(data, list) else [data]
@@ -299,7 +362,24 @@ def playwright_available() -> bool:
         return False
 
 
-def render_html(url: str, *, wait_selector: str | None = None, timeout_ms: int = 15000) -> str:
+#  Playwright's default UA string contains "HeadlessChrome/<ver>", which some
+#  WAFs (found live 2026-07-10 on nextgenenergyjobs.com — a plain fetch_html
+#  succeeded but render_html got a bare "Forbidden" body) block outright.
+#  A realistic desktop Chrome UA avoids that fingerprint without otherwise
+#  changing rendering behavior for sites that don't care (e.g. Synopsys).
+_DEFAULT_RENDER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+)
+
+
+def render_html(
+    url: str,
+    *,
+    wait_selector: str | None = None,
+    timeout_ms: int = 15000,
+    user_agent: str | None = _DEFAULT_RENDER_UA,
+) -> str:
     """Render a JS-heavy page with a FRESH HEADLESS Chromium tab — no
     persistent profile, no login (public career pages need neither). Fallback
     tier only: try ``fetch_html`` + the tier-2 extractors first, and only
@@ -308,13 +388,17 @@ def render_html(url: str, *, wait_selector: str | None = None, timeout_ms: int =
     only needs tiers 1-2 keeps working even before ``playwright install
     chromium`` has been run. Raises on failure (missing browser, timeout,
     navigation error) — callers should catch it the same way they catch
-    ``urllib`` errors from ``fetch_html``."""
+    ``urllib`` errors from ``fetch_html``.
+
+    ``user_agent`` defaults to a realistic desktop Chrome string (masking the
+    headless fingerprint); pass ``None`` to use Playwright's own default, or
+    a different string for a site with its own UA requirements."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         try:
-            page = browser.new_page()
+            page = browser.new_page(user_agent=user_agent) if user_agent else browser.new_page()
             page.goto(url, timeout=timeout_ms)
             if wait_selector:
                 page.wait_for_selector(wait_selector, timeout=timeout_ms)

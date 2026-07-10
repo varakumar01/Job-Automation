@@ -70,6 +70,8 @@ class TheMusePlugin(JobSourcePlugin):
     """Jobs from themuse.com via their public JSON API (paginated, no search param)."""
 
     name = "themuse"
+    base_url = "themuse.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return True  # no token required

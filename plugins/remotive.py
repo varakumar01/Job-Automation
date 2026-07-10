@@ -73,6 +73,8 @@ class RemotivePlugin(JobSourcePlugin):
     """Remote-first jobs from remotive.com via their public JSON API."""
 
     name = "remotive"
+    base_url = "remotive.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return True  # no token required

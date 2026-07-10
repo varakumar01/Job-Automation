@@ -285,6 +285,8 @@ class AvaturePlugin(JobSourcePlugin):
     in AVATURE_COMPANIES."""
 
     name = "avature"
+    base_url = "*.avature.net"
+    mechanism = "html"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

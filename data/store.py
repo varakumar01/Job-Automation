@@ -71,12 +71,22 @@ def db_path() -> Path:
 
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
-    """Yield a connection with row access by name and FKs on; commits on success."""
+    """Yield a connection with row access by name and FKs on; commits on success.
+
+    WAL mode + a busy timeout let multiple short-lived connections overlap
+    safely without "database is locked" errors — e.g. a concurrent `store.py
+    stats` CLI call while a scrape is running. job-scraper's parallel plugin
+    threads only fetch (pure in-memory data); all DB writes are serialized
+    on the main thread after every thread finishes, so this isn't protecting
+    against concurrent writers from job-scraper itself, just other processes.
+    """
     path = db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 30000")
     try:
         yield conn
         conn.commit()
@@ -233,6 +243,56 @@ def export_json(path: str | os.PathLike[str] | None = None) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(get_jobs(), indent=2, ensure_ascii=False), encoding="utf-8")
     return out
+
+
+def reset(hard: bool = False) -> dict[str, Any]:
+    """Wipe the pipeline back to a clean sheet.
+
+    Always clears: the ``jobs`` + ``runs`` tables (and resets autoincrement)
+    and deletes the ``jobs.json`` export. With ``hard=True``, also empties
+    ``tailored/`` (generated résumé variants) and ``applications/`` (apply
+    artifacts) — everything the pipeline has ever produced. The DB file and
+    schema stay intact (``init_db()`` still works after a reset); only rows
+    and generated files are removed.
+
+    Returns a summary dict for the caller to print.
+    """
+    summary: dict[str, Any] = {"jobs": 0, "runs": 0, "jobs_json": False,
+                               "tailored_dirs": 0, "application_dirs": 0}
+    with connect() as conn:
+        summary["jobs"] = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+        summary["runs"] = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+        conn.execute("DELETE FROM jobs")
+        conn.execute("DELETE FROM runs")
+        # sqlite_sequence only exists once an AUTOINCREMENT insert has ever
+        # happened (SQLite creates it lazily) — a fresh/never-used DB won't
+        # have it yet, so check before deleting or this raises OperationalError.
+        has_seq = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'"
+        ).fetchone()
+        if has_seq:
+            conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('jobs', 'runs')")
+
+    export_path = db_path().parent / "jobs.json"
+    if export_path.exists():
+        export_path.unlink()
+        summary["jobs_json"] = True
+
+    if hard:
+        import shutil
+        for dirname, key in (("tailored", "tailored_dirs"), ("applications", "application_dirs")):
+            d = ROOT / dirname
+            if not d.is_dir():
+                continue
+            children = [c for c in d.iterdir()]
+            summary[key] = len(children)
+            for c in children:
+                if c.is_dir():
+                    shutil.rmtree(c)
+                else:
+                    c.unlink()
+
+    return summary
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────

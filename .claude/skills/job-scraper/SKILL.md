@@ -24,6 +24,12 @@ Reads: portals (Apify actors + custom plugins). Writes: `jobs` rows → `scraped
   `registry.py` auto-discovers every `<site>.py` — **adding a portal = dropping one
   file** (PLAN.md §4). Underscore-prefixed files (`_apify.py`, `_custom_template.py`)
   are helpers/templates and are skipped by discovery.
+- Each plugin also sets `base_url` (its domain, for the SOURCE REPORT), `mechanism`
+  (`"rss"|"atom"|"json"|"html"|"browser"|"apify"`), and, for any plugin whose
+  `is_available()` can be False, an `availability_detail()` override naming the exact
+  missing dependency (e.g. `"no APIFY_TOKEN & no chromium"`) instead of the generic
+  base-class default `"check creds"`. All three are optional/cosmetic (nothing breaks
+  if a new plugin skips them) but keep them — that's the whole point of the report.
 - **Apify-backed** portals (`linkedin`, `naukri`, `indeed`) call their actor via
   `apify-client` using `APIFY_TOKEN` from `.env`. Each adapter passes the requested
   `limit` into the actor's own count field so cost is bounded (pay-per-event).
@@ -33,15 +39,18 @@ Reads: portals (Apify actors + custom plugins). Writes: `jobs` rows → `scraped
 ## Run it
 
 ```bash
-# list plugins + availability (free, no actor run)
+# list plugins + availability (free, no actor run) — shows domain + why any are unavailable
 python3 .claude/skills/job-scraper/scripts/scrape.py --list
 
 # scrape one portal
 python3 .claude/skills/job-scraper/scripts/scrape.py \
     --source linkedin --query "security engineer" --location "Bengaluru" --limit 10
 
-# scrape every available portal
-python3 .claude/skills/job-scraper/scripts/scrape.py --source all --query "red team" --limit 5
+# scrape every available portal (the default --source), multiple queries/locations in
+# one run — the matrix is the cross product, every plugin fetches every combo
+python3 .claude/skills/job-scraper/scripts/scrape.py \
+    --queries "red team,detection engineer" --locations "Bengaluru,Remote" \
+    --limit 5 --workers 8
 
 # Apify key health indicator (which keys are usable / exhausted / invalid)
 python3 .claude/skills/job-scraper/scripts/scrape.py --keys
@@ -50,6 +59,22 @@ python3 .claude/skills/job-scraper/scripts/scrape.py --reset-keys all   # clear 
 
 Run with the project venv: `.venv/bin/python ...` (deps from `requirements.txt`).
 Rows land in `data/jobs.db`; `data/jobs.json` is refreshed for inspection.
+
+**`main.py search` defaults to `--source all`** (changed 2026-07-10 — it used to default
+to `linkedin`, so the ~35 aggregator/joblister/ATS plugins never ran unless `--source all`
+was passed explicitly, and the user had no way to tell). Every run — `--source all` or a
+single named source — ends with a **SOURCE REPORT** listing *every discovered plugin*,
+available or not: domain, fetch mechanism (rss/atom/json/html/browser/apify), and outcome
+(✓ ok / ◐ partial / ∅ empty / ✗ error / ⚠ unavailable-with-reason). An unavailable or
+errored plugin never just vanishes from the output anymore.
+
+**Threaded fetch:** with `--source all` (or `--queries`/`--locations` producing more than
+one combo), plugins are fetched in parallel (`--workers`, default 8 — one worker thread
+per plugin). A single plugin's own query×location combos still run **sequentially inside
+its own task**, so one domain is never hit concurrently (politeness / PLAN §6 rate
+limits). DB upserts are serialized on the main thread after every fetch task has
+finished — the executor `with` block guarantees the whole matrix is done before the
+report prints or `main.py`'s matcher runs next.
 
 ## Chosen actors (verified 2026-06-30)
 

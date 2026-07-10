@@ -190,6 +190,8 @@ class ICIMSPlugin(JobSourcePlugin):
     ICIMS_COMPANIES."""
 
     name = "icims"
+    base_url = "*.icims.com"
+    mechanism = "html"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

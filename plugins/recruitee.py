@@ -90,6 +90,8 @@ class RecruiteePlugin(JobSourcePlugin):
     configured in RECRUITEE_COMPANIES."""
 
     name = "recruitee"
+    base_url = "recruitee.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))

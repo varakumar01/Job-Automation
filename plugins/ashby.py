@@ -86,6 +86,8 @@ class AshbyPlugin(JobSourcePlugin):
     configured in ASHBY_COMPANIES."""
 
     name = "ashby"
+    base_url = "api.ashbyhq.com"
+    mechanism = "json"
 
     def is_available(self) -> bool:
         return bool(parse_companies(_ENV_VAR))
