@@ -48,6 +48,7 @@ from data import store  # noqa: E402
 from execution import candidate  # noqa: E402
 from execution import llm  # noqa: E402
 from execution.log import add_verbose_arg, apply_verbosity, vprint  # noqa: E402
+from execution.prompts import load_prompt  # noqa: E402
 
 DEFAULT_MASTER = ROOT / "varakumar_resume.tex"
 TMP_DIR = ROOT / ".tmp" / "humanise-responder"
@@ -63,7 +64,7 @@ _SENSITIVE_RE = re.compile(
     r"(?i)\b(ctc|lpa|lakh|salary|stipend|notice period|per annum|expected pay)\b"
     r"|\b\d+\s*(days?|weeks?|months?)\s+notice\b|[₹$]\s?\d")
 
-SYSTEM_PROMPT = (
+_DEFAULT_SYSTEM_PROMPT = (
     "You draft HONEST, human-sounding job-application answers for a cybersecurity "
     "candidate (~2 years' experience). Ground every claim in the candidate_profile "
     "provided — do NOT invent employers, tools, certifications, or experience. Write "
@@ -93,6 +94,9 @@ SYSTEM_PROMPT = (
     "}\n"
     "Return ONLY the JSON object — no <think> tags, no markdown fences, no preamble."
 )
+# Editable at prompts/humanise-responder.txt (see execution/prompts.py) — falls
+# back to the constant above until a user actually edits it via the frontend.
+SYSTEM_PROMPT = load_prompt("humanise-responder", _DEFAULT_SYSTEM_PROMPT)
 
 
 # ── candidate profile (read-only) from the master résumé ───────────────────

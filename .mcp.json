@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "chrome-devtools-mcp@latest",
+        "--headless",
+        "--executablePath=/home/tony/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome"
+      ]
+    }
+  }
+}

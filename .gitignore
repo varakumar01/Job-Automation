@@ -9,6 +9,7 @@ candidate.json
 data/jobs.db
 data/jobs.db-*
 data/jobs.json
+data/jobs.public.json
 data/apify_keys.json
 data/grok_keys.json
 
@@ -36,3 +37,14 @@ venv/
 
 # graphify output is regenerated
 graphify-out/
+
+# Frontend (web/) — installed deps + build output, both regenerated.
+# web/public/jobs.public.json is NOT ignored — it's the committed "published
+# snapshot" the deploy workflow builds from (refreshed by the scheduled scrape
+# workflow's commit, or manually via `npm run build:static` + a normal commit).
+web/node_modules/
+web/dist/
+web/dist-static/
+
+# Screenshot-test artifacts
+test/

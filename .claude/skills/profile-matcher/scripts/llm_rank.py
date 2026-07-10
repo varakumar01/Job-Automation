@@ -38,10 +38,11 @@ from data import store  # noqa: E402
 from execution import eligibility, llm  # noqa: E402
 from execution.log import add_verbose_arg, apply_verbosity, vprint  # noqa: E402
 from execution.profile import candidate_profile  # noqa: E402
+from execution.prompts import load_prompt  # noqa: E402
 
 JD_SNIPPET_CHARS = 700  # per-job JD context sent to the model (keeps the batch token-bound)
 
-SYSTEM_PROMPT = (
+_DEFAULT_SYSTEM_PROMPT = (
     "You are an expert technical recruiter ranking cybersecurity job postings by how well "
     "ONE specific candidate fits each — fewest résumé changes needed to be a credible "
     "applicant.\n"
@@ -77,6 +78,9 @@ SYSTEM_PROMPT = (
     "'good match', 'relevant skills', or ones that just restate the title. "
     "Return ONLY the JSON object — no <think> tags, no markdown fences, no preamble."
 )
+# Editable at prompts/profile-matcher.txt (see execution/prompts.py) — falls
+# back to the constant above until a user actually edits it via the frontend.
+SYSTEM_PROMPT = load_prompt("profile-matcher", _DEFAULT_SYSTEM_PROMPT)
 
 
 # ── job selection ───────────────────────────────────────────────────────────

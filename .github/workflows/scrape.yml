@@ -1,0 +1,76 @@
+name: Scheduled scrape
+
+# Runs the job-scraper on a schedule and commits a refreshed, privacy-trimmed
+# public snapshot (web/public/jobs.public.json) — pushing that commit triggers
+# deploy.yml automatically, so the public dashboard stays current without any
+# manual step. This workflow itself never touches Netlify or any secret beyond
+# what scraping needs.
+#
+# Cost note: every ~39 free plugins (RSS/JSON/HTML, no token) run for free on
+# every trigger. Apify-backed portals (linkedin/naukri/indeed/wellfound) only
+# run — and only bill — if you add an APIFY_TOKEN repo secret; leave it unset
+# to keep this workflow entirely free. The existing APIFY_MAX_CHARGE_USD safety
+# net (default $0.50/run, see .env.example) still applies here. The cron below
+# is deliberately conservative (once daily) — tighten or loosen as you like,
+# but remember a shorter interval means more Apify spend if that secret is set.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"  # 03:17 UTC daily — off the hour to avoid GH's peak-minute pile-up
+  workflow_dispatch:
+    inputs:
+      queries:
+        description: "Comma-separated search queries"
+        default: "security engineer,detection engineer,vulnerability"
+      locations:
+        description: "Comma-separated locations"
+        default: "Hyderabad,Bengaluru,India"
+      days:
+        description: "Recency window (days)"
+        default: "3"
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      # Enables the browser-based plugins (indeed's primary path, nextgenenergyjobs,
+      # careerhound/wellfound's session fallback — the latter two still need a real
+      # logged-in PLAYWRIGHT_USER_DATA_DIR this workflow doesn't have, so they stay
+      # unavailable here regardless). Everything else works without this step too.
+      - name: Install Playwright Chromium
+        run: playwright install --with-deps chromium
+
+      - name: Scrape
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+        run: |
+          python3 main.py search \
+            --queries "${{ github.event.inputs.queries || 'security engineer,detection engineer,vulnerability' }}" \
+            --locations "${{ github.event.inputs.locations || 'Hyderabad,Bengaluru,India' }}" \
+            --days "${{ github.event.inputs.days || '3' }}"
+
+      - name: Export public snapshot
+        run: |
+          python3 data/store.py export-public
+          mkdir -p web/public
+          cp data/jobs.public.json web/public/jobs.public.json
+
+      - name: Commit snapshot if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add web/public/jobs.public.json
+          git diff --staged --quiet || git commit -m "Auto-update public job snapshot ($(date -u +%Y-%m-%d))"
+          git push

@@ -544,6 +544,17 @@ def cmd_sources(args) -> int:
     return _run(SCRAPE, "--list")
 
 
+def cmd_serve(args) -> int:
+    """Launch the local control-panel web app (FastAPI backend at --port,
+    serving the built web/dist frontend if present; otherwise API-only —
+    run the Vite dev server separately with `npm run dev` inside web/)."""
+    import uvicorn
+    print(f"Serving control-panel API on http://{args.host}:{args.port} "
+          f"(Ctrl+C to stop). API docs: http://{args.host}:{args.port}/docs")
+    uvicorn.run("server.app:app", host=args.host, port=args.port, reload=args.reload)
+    return 0
+
+
 def cmd_reset(args) -> int:
     """Wipe the pipeline back to a clean sheet. Always clears the DB (jobs + runs)
     and the jobs.json export; --hard also clears tailored/ and applications/."""
@@ -697,6 +708,11 @@ Pipeline runs left to right:
 
   report        Build the full application dashboard.
 
+  serve         Launch the local control-panel web app (FastAPI + frontend).
+    --host      Bind address (default: 127.0.0.1 — localhost only)
+    --port      Port (default: 8000)
+    --reload    Auto-reload on code changes (dev only)
+
 Tip: `main.py <command> -h` shows that command's flags.
 """
 
@@ -733,7 +749,7 @@ examples:
 
 
 COMMANDS = ("search", "lists", "prep", "apply", "log", "applied", "report",
-            "reject", "rejected", "keys", "sources", "stats", "rank", "reset")
+            "reject", "rejected", "keys", "sources", "stats", "rank", "reset", "serve")
 
 
 def _normalize_argv(argv: list[str]) -> list[str]:
@@ -783,6 +799,16 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("stats")
     p.set_defaults(func=cmd_stats)
+
+    p = sub.add_parser(
+        "serve", help="Launch the local control-panel web app (FastAPI + frontend).",
+        description="Launch the local control-panel web app. Binds localhost only — "
+                    "the API can run subprocesses, edit .env, and compile the résumé, "
+                    "so never expose it beyond your machine.")
+    p.add_argument("--host", default="127.0.0.1", help="bind address (default: 127.0.0.1)")
+    p.add_argument("--port", type=int, default=8000, help="port (default: 8000)")
+    p.add_argument("--reload", action="store_true", help="auto-reload on code changes (dev only)")
+    p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("rank")
     p.add_argument("--llm", choices=["python", "grok", "deepseek", "nvidia", "api"], default="python",

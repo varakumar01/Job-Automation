@@ -1,0 +1,61 @@
+name: Deploy public dashboard
+
+# Builds the read-only static dashboard (web/, Vite `--mode static`) from the
+# committed `web/public/jobs.public.json` snapshot and deploys it to Netlify.
+# No backend, no secrets, no live scraping in this workflow — it only ever
+# reads what's already checked into the repo. The snapshot is refreshed either
+# by pushing a new one manually (`npm run build:static` locally, then commit)
+# or by the scheduled scrape workflow (scrape.yml), whose commit triggers this
+# workflow automatically via the `push` trigger below.
+#
+# Requires two repo secrets before this can actually deploy (Settings > Secrets
+# and variables > Actions): NETLIFY_AUTH_TOKEN and NETLIFY_SITE_ID (create a
+# site at app.netlify.com first, or let `netlify init` create one and copy its
+# ID). Until both are set, this workflow will fail at the deploy step — the
+# build step alone still runs and is a useful smoke test.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "web/**"
+      - "data/schema.sql"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+
+      # Deliberately NOT `npm run build:static` here — that target regenerates
+      # web/public/jobs.public.json from a LOCAL SQLite DB that doesn't exist
+      # in this checkout. This job only builds from whatever snapshot is
+      # already committed, keeping the deploy step data-free and fast.
+      - name: Build static dashboard
+        working-directory: web
+        run: npx tsc -b && npx vite build --mode static
+
+      - name: Deploy to Netlify
+        uses: nwtgck/actions-netlify@v3
+        with:
+          publish-dir: web/dist-static
+          production-branch: master
+          production-deploy: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deploy-message: "Deploy ${{ github.sha }}"
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        timeout-minutes: 5

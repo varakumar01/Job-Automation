@@ -50,6 +50,7 @@ from data import store  # noqa: E402
 from execution import llm  # noqa: E402
 from execution.log import add_verbose_arg, apply_verbosity, vprint  # noqa: E402
 from execution.profile import candidate_profile  # noqa: E402
+from execution.prompts import load_prompt  # noqa: E402
 
 _PROFILE_CACHE: dict | None = None
 
@@ -75,7 +76,7 @@ BRIEF_KEYS = [
 ]
 REQUIRED_KEYS = ("company_summary", "role_summary")  # a brief is useless without these
 
-SYSTEM_PROMPT = (
+_DEFAULT_SYSTEM_PROMPT = (
     "You analyze a single job posting for a cybersecurity candidate (~2 years' "
     "experience) and return a STRICT JSON object — no prose, no markdown fences. "
     "Extract only what the posting states; do not invent requirements. Schema:\n"
@@ -96,6 +97,9 @@ SYSTEM_PROMPT = (
     "A CANDIDATE PROFILE is provided with the posting — ground fit_notes in it. "
     "Return ONLY the JSON object — no <think> tags, no markdown fences, no preamble."
 )
+# Editable at prompts/jd-understander.txt (see execution/prompts.py) — falls back
+# to the constant above until a user actually edits it via the frontend.
+SYSTEM_PROMPT = load_prompt("jd-understander", _DEFAULT_SYSTEM_PROMPT)
 
 
 def _build_user_prompt(job: dict) -> str:

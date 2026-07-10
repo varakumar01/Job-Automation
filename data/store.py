@@ -245,6 +245,32 @@ def export_json(path: str | os.PathLike[str] | None = None) -> Path:
     return out
 
 
+# Columns safe to publish on the read-only static dashboard (web/ Phase 3) —
+# excludes jd_text/jd_brief/answers_json/notes (large + hold JD/answer prose
+# that isn't meant for public display) and any local filesystem path.
+_PUBLIC_FIELDS = (
+    "id", "source", "title", "company", "location", "url", "posted_at",
+    "match_score", "llm_score", "role_profile", "status", "updated_at",
+)
+# Only rows that made it into the real pipeline — raw "scraped" noise and
+# "rejected" off-profile jobs aren't meaningful to a public viewer.
+_PUBLIC_STATUSES = ("matched", "tailored", "ready", "applied")
+
+
+def export_public_json(path: str | os.PathLike[str] | None = None) -> Path:
+    """Dump a privacy-trimmed subset of jobs for the public static dashboard
+    (see web/ Phase 3 — this is what CI publishes, not the full `jobs.json`).
+    Returns the written path."""
+    out = Path(path) if path else (db_path().parent / "jobs.public.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for status in _PUBLIC_STATUSES:
+        for job in get_jobs(status=status, order="score"):
+            rows.append({k: job.get(k) for k in _PUBLIC_FIELDS})
+    out.write_text(json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8")
+    return out
+
+
 def reset(hard: bool = False) -> dict[str, Any]:
     """Wipe the pipeline back to a clean sheet.
 
@@ -303,6 +329,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     sub.add_parser("init", help="create tables")
     sub.add_parser("stats", help="counts per status")
     sub.add_parser("export", help="write data/jobs.json")
+    sub.add_parser("export-public", help="write data/jobs.public.json (privacy-trimmed, for web/)")
     p_list = sub.add_parser("list", help="list jobs")
     p_list.add_argument("--status", default=None)
     p_list.add_argument("--limit", type=int, default=20)
@@ -315,6 +342,8 @@ def _main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(stats(), indent=2))
     elif args.cmd == "export":
         print(f"✓ exported {export_json()}")
+    elif args.cmd == "export-public":
+        print(f"✓ exported {export_public_json()}")
     elif args.cmd == "list":
         for j in get_jobs(status=args.status, limit=args.limit):
             print(f"[{j['id']:>4}] {j['status']:<8} {j['source']:<9} "

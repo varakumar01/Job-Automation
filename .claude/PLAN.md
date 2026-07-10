@@ -291,6 +291,101 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done (review + test passed).
     `careerhound.py`). Live-reverified end-to-end: `main.py search --source arbeitnow
     --queries "security engineer" --locations Remote --limit 2` → single scrape.py call →
     SOURCE REPORT → matcher → auto-reject → classified lists, all correctly chained.
+- [x] **Local control-panel web app + static public dashboard + CI/hosting**
+  *(owner request 2026-07-10: "make a proper front end!" — shadcn/ui + Phosphor icons,
+  minimal search bar, session-only env, advanced-options editors, cmd panel; "make it
+  hostable via github pages and auto compile into master branch" — pivoted to Netlify,
+  see decision below)*:
+  - **`execution/prompts.py`** (new) — `load_prompt(name, default)` reads
+    `prompts/<name>.txt` if present/non-empty else the skill's own inline default
+    (zero behavior change until a user edits one); `get_or_seed`/`save_prompt` back the
+    API's edit UI. Wired into `jd-understander/understand.py`, `humanise-responder/
+    respond.py`, `profile-matcher/llm_rank.py` — each's `SYSTEM_PROMPT` constant renamed
+    to `_DEFAULT_SYSTEM_PROMPT`, with `SYSTEM_PROMPT = load_prompt(...)` added.
+  - **`server/app.py`** (new) — FastAPI backend, `main.py serve [--host] [--port]
+    [--reload]` launches it via uvicorn (binds `127.0.0.1` only — it runs subprocesses,
+    edits `.env`, compiles the résumé, so it must never be exposed beyond localhost).
+    Thin wrapper, no logic duplication: `GET /api/jobs|stats|sources|health`; `POST
+    /api/search` streams `scrape.py`→`match.py`→`_auto_reject()` live over SSE (one
+    `line` event per subprocess stdout line, `exit` per subprocess, final `done` with
+    stats — guarded by an `asyncio.Lock` so two concurrent searches can't interleave
+    output or race the store); `POST /api/reset` wraps the existing `store.reset`;
+    `GET/POST /api/env` — session-only by default (this process's `os.environ`, inherited
+    by its subprocess children, gone on restart), `persist: true` atomically rewrites
+    `.env` (temp file + `os.replace`) preserving every other line, secret-looking keys
+    (`TOKEN|KEY|SECRET|PASSWORD`) always masked on GET (verified live: zero full-secret
+    leaks against the real `.env`); `GET/POST /api/prompts` (defaults cached per
+    process — see review fixes below) and `/api/profile` (`candidate.json`) and
+    `/api/resume` (+`/api/resume/pdf`, real `tectonic` recompile).
+  - **`web/`** (new) — Vite + React 19 + TS, shadcn/ui on **base-ui** (not Radix — a
+    2026-07 shadcn CLI default; primitives use base-ui's `render=` prop, not `asChild`),
+    Tailwind v4, `@phosphor-icons/react`. Search bar centered above the vertical middle
+    (not the very top, per owner request) with locations/source/days/limit/workers
+    controls; live CMD panel (SSE-driven, per-line as it's produced — a full
+    `--source all` run can take minutes, so this is the difference between "running"
+    and "looks hung"); per-source status grid; job results list; an Advanced-options
+    dialog with Env/Prompts/Profile/Résumé tabs (résumé tab is a `.tex` editor + compile
+    + live PDF preview via an iframe). `web/src/lib/api.ts` includes a hand-rolled SSE
+    parser (native `EventSource` can't do a POST-with-JSON-body request).
+  - **Static public dashboard (Phase 3)** — same `web/` codebase, second build mode:
+    `npm run build:static` (Vite `--mode static`, outputs `dist-static/`) renders
+    `StaticApp.tsx` instead of `App.tsx` (branched on `import.meta.env.MODE` in
+    `main.tsx`) — read-only, no backend/secrets/live commands, just a client-side
+    filter over a bundled JSON snapshot. New `data/store.export_public_json()` /
+    `python3 data/store.py export-public` produces that snapshot: only
+    `matched|tailored|ready|applied` rows, and only display-safe columns (drops
+    `jd_text`/`jd_brief`/`answers_json`/`notes`/local file paths — the full `jobs.json`
+    is 4.4 MB with full JD prose per row, not fit for public publishing). The snapshot
+    is committed at `web/public/jobs.public.json` (tracked, unlike `data/jobs.json`) —
+    the deploy workflow builds from whatever is checked in, never a live DB.
+  - **CI/hosting (Phase 4)** — checked the plan's own "purge committed secrets" blocking
+    prerequisite against real git history (`git log --all` for `.env`/`candidate.json`/
+    `data/apify_keys.json`/`data/grok_keys.json`) and found **none were ever
+    committed, at any point, on any branch** — the blocker was a false alarm (raised
+    defensively from file *existence* during planning, never confirmed against actual
+    git tracking); no history rewrite needed. `.github/workflows/deploy.yml` — on push
+    to `master` (paths: `web/**`), builds the static dashboard from the committed
+    snapshot and deploys to **Netlify** (`nwtgck/actions-netlify@v3`; needs
+    `NETLIFY_AUTH_TOKEN`+`NETLIFY_SITE_ID` repo secrets, not yet configured — owner
+    chose not to deploy live yet). `.github/workflows/scrape.yml` — owner-requested
+    scheduled scrape (daily cron + `workflow_dispatch`), runs `main.py search` (all ~39
+    plugins; Apify-backed ones only bill if `APIFY_TOKEN` secret is added — left unset by
+    default, workflow is otherwise free), exports + commits the refreshed public
+    snapshot, whose push auto-triggers `deploy.yml`.
+  - Review+test loop PASSED. code-tester 13/13 on `server/app.py` (health/stats/sources
+    with specific unavailability reasons/jobs incl. 400-on-bad-status/SSE search
+    completing in 1.2s with correct line+exit+done events/env masking verified via a
+    real secret-leak scan — zero leaks/env persist appending exactly one line, zero
+    other changes/prompts+profile+resume GET-POST round trips incl. real PDF
+    recompile/reset — every destructive test backed up beforehand and restored+verified
+    byte-identical after). code-reviewer PASS (first attempt hit the session API rate
+    limit mid-review and was retried): 3 MAJOR fixed (`_stream_search` had no
+    concurrency guard — two overlapping searches could interleave SSE output and race
+    `_auto_reject`/store writes — added the `asyncio.Lock`/409 above; `_persist_env_var`
+    truncate-then-write could corrupt `.env` on a crash mid-write — made atomic via
+    temp-file + `os.replace` (caught my own follow-up bug here: `Path.with_suffix()` on
+    a dotfile like `.env` produces `.env.env.tmp`, not `.env.tmp` — fixed to plain string
+    concat); `/api/prompts` GET re-executed all 3 skill scripts' full module top level
+    (imports, dotenv load, sys.path mutation) on every single request just to read a
+    constant — added a process-lifetime cache) + 4 MINOR fixed (SSE client parser
+    joined multiple `data:` lines with no separator, violating the SSE spec's
+    newline-join rule — latent, server never emits multi-line data today, fixed anyway;
+    `get_or_seed` in `prompts.py` skipped the name validation `save_prompt` had, a
+    defense-in-depth gap; `_known_env_keys`'s comment-stripping was correct but
+    undocumented — annotated; `"set": bool(os.environ.get(k))` misreported a
+    deliberately-empty-string env var as unset — changed to `k in os.environ`) + 1 NIT
+    (redundant generator wrapper in `post_search`) + 2 noted-but-left (multi-tab abort
+    cleanup in `App.tsx` — added defensively; `EnvTab`'s persist-checkbox not resetting
+    after save — reviewer judged current behavior reasonable). All fixes re-verified
+    live: 409 confirmed on concurrent `POST /api/search`, atomic `.env` write confirmed
+    (no leftover `.tmp`, diff-clean restore), frontend typecheck+build clean after every
+    fix. **Visual/browser testing of `web/` is NOT yet done** — `chrome-devtools` MCP
+    (added via a new root `.mcp.json`) needs a session reconnect to pick up its
+    `--executablePath` (pointed at Playwright's bundled Chromium, since no system
+    Chrome/Chromium exists in this environment) after being set; deferred rather than
+    repeatedly blocking on restarts mid-session. Local pipeline is otherwise fully
+    live-verified: `main.py serve` (FastAPI on :8000), `web/` dev server (:5173, proxies
+    `/api`), and the static preview (:4173) all confirmed serving real data via curl.
 - [~] `main.py` single entrypoint: `search` (multi-area/query/`--days`, newest-first),
   `lists` (eligible-as-is vs needs-mod), `prep --llm claude|grok|api [--modify-resume]`,
   `apply`, `log --screenshot`, `report` (dashboard + `applications/<id>/` artifacts), plus
@@ -1207,6 +1302,42 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   whats going on! and do all websites work or not just by the output! and which domain
   responded in which way"). Live per-plugin progress prints by default (not gated behind
   `-v`) since a full run can take several minutes. [§8]
+- 2026-07-10 — frontend — stack — **Vite + React 19 + TypeScript + shadcn/ui
+  (base-ui) + Tailwind v4 + Phosphor icons**, per owner request. shadcn's CLI defaults
+  to base-ui primitives now (not Radix) — components use `render=` instead of
+  `asChild`; don't "fix" this to Radix conventions in future edits. [§8, new surface]
+  hosting — **Netlify, not GitHub Pages** (owner's original ask) — Pages can only
+  serve static files and this project's interactive control panel needs a real
+  backend (subprocess execution, `.env` edits, tectonic compiles); Netlify hosts the
+  static-only public dashboard build, the interactive app stays local-only
+  (`main.py serve`). [§8]
+- 2026-07-10 — frontend — env editing scope — **session-only by default** (this
+  server process's `os.environ`, inherited by its subprocess children only, gone on
+  restart) with an explicit opt-in `persist: true` to rewrite `.env` on disk (owner
+  request: "Make env as temporary loaded for each session"). [§8]
+- 2026-07-10 — job-scraper/frontend — public data scope — the static dashboard
+  publishes only `matched|tailored|ready|applied` rows and only display-safe columns
+  (id/source/title/company/location/url/posted_at/scores/role_profile/status) — never
+  `jd_text`/`jd_brief`/`answers_json`/`notes`/local file paths. New
+  `store.export_public_json()` / `data/store.py export-public` is the only producer of
+  this snapshot; nothing else should hand-roll a public data export. [§3, new surface]
+- 2026-07-10 — CI — committed-secrets blocker — **resolved as a false alarm, not a
+  fix.** The original plan flagged `.env`/`candidate.json`/`data/apify_keys.json`/
+  `data/grok_keys.json` as needing a git-history purge before any CI/hosting work,
+  based on their presence on disk during planning. Checked against actual git history
+  (`git log --all --diff-filter=A` + `git ls-files`, all four paths, every branch)
+  before starting Phase 4: none were ever committed. No `git filter-repo`/BFG history
+  rewrite was needed or performed. Lesson for future planning: verify a "committed
+  secret" claim against `git log`/`git ls-files` before treating it as a blocker, not
+  just file existence + `.gitignore` presence. [§8]
+- 2026-07-10 — CI — scheduled scrape — **built, cadence = daily cron +
+  workflow_dispatch**, Apify-backed portals only bill if `APIFY_TOKEN` is added as a
+  repo secret (unset by default — the ~39 free plugins still run and commit a fresh
+  public snapshot either way). Owner explicitly requested both the scheduled-scrape
+  workflow AND keeping local scraping working — this is additive to `main.py search`,
+  not a replacement. Owner is not deploying live yet (no Netlify secrets configured) —
+  workflows are built and validated (YAML-parsed, logic-reviewed) but not yet run for
+  real in GitHub Actions. [§8]
 
 ---
 

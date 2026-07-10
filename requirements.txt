@@ -7,5 +7,10 @@ python-dotenv>=1.0       # load secrets from .env
 requests>=2.31           # Apify REST fallback + lightweight web fetches
 anthropic>=0.40          # OPTIONAL: only when LLM_PROVIDER=api (session mode needs nothing)
 
+# Local control-panel web app (`main.py serve`) — FastAPI backend for web/
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sse-starlette>=2.1
+
 # NOTE: the data store uses the Python stdlib (sqlite3, json) — no dependency.
 # NOTE: profile-matcher is pure stdlib too (deterministic scoring, no LLM).
