@@ -42,13 +42,14 @@ from sse_starlette.sse import EventSourceResponse  # noqa: E402
 import main as cli  # noqa: E402 — the existing main.py CLI; reuse its paths/helpers
 from data import store  # noqa: E402
 from execution import prompts as prompt_store  # noqa: E402
+from execution.eligibility import classify  # noqa: E402
 from plugins.registry import discover_plugins  # noqa: E402
 
 app = FastAPI(title="job-search control panel")
 app.add_middleware(
     CORSMiddleware,
     # Local dev only — the Vite dev server runs on a different port.
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5178", "http://127.0.0.1:5178"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -100,6 +101,103 @@ def get_sources() -> list[dict]:
     return out
 
 
+# Every status downstream of matching — a job keeps showing in its eligibility
+# tier as it moves through the pipeline instead of vanishing once prep advances
+# it off "matched" (the CLI's `lists` command intentionally only shows the
+# matched-and-undecided queue; the UI additionally wants prepped/applied jobs to
+# stay visible with their status, so a run's result is visibly reflected next to
+# the job instead of the card just disappearing).
+_POST_MATCH_STATUSES = ("matched", "tailored", "applied", "skipped", "failed")
+
+
+@app.get("/api/lists")
+def get_lists() -> dict:
+    """Jobs bucketed into the same four eligibility tiers `main.py lists` shows,
+    across every post-match status — lets the frontend inform a prep
+    job-selection choice with real counts/rows, and keeps showing each job's
+    pipeline progress (tailored/applied/...) instead of dropping it once
+    prep advances it off 'matched'."""
+    jobs = [j for j in store.get_jobs(order="score") if j["status"] in _POST_MATCH_STATUSES]
+    tiers: dict[str, list[dict]] = {"eligible": [], "needs_mod": [], "stretch": [], "off_profile": []}
+    for j in jobs:
+        tiers.setdefault(classify(j), []).append(j)
+    return tiers
+
+
+# ── shared subprocess streaming + pipeline lock ─────────────────────────────
+
+# Only one pipeline operation (search/prep/rank) at a time — two concurrent
+# runs would interleave SSE output in the CMD panel and race on the same
+# store (upserts, _auto_reject, status transitions all assume exclusivity).
+_pipeline_lock = asyncio.Lock()
+
+
+async def run_streamed(script: Path, *args: str, env: dict | None = None):
+    """Run `script` as a subprocess, yielding each stdout line as an SSE `line`
+    event as it's produced, then a final `exit` event with the return code.
+    Shared by every pipeline endpoint (search/prep/rank) — the CMD panel's
+    single data source regardless of which stage is running."""
+    proc = await asyncio.create_subprocess_exec(
+        cli.PY, str(script), *args,
+        cwd=str(cli.ROOT),
+        # PYTHONUNBUFFERED=1 is the fix for "output only appears at the end":
+        # stdout is a pipe here (not a TTY), so Python block-buffers it by
+        # default — every print() from this script AND from any nested
+        # subprocess it spawns (main.py's `_run()` calls into understand.py/
+        # tailor.py/respond.py, inheriting this env) queues up in a buffer and
+        # only actually reaches this pipe when the buffer fills or the
+        # process exits. Forcing unbuffered mode makes each line arrive as
+        # soon as it's printed, all the way down the subprocess chain.
+        env={**os.environ, "PYTHONUNBUFFERED": "1", **(env or {})},
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    )
+    yield_queue: asyncio.Queue = asyncio.Queue()
+
+    async def pump():
+        assert proc.stdout is not None
+        async for raw in proc.stdout:
+            await yield_queue.put(raw.decode(errors="replace").rstrip("\n"))
+        await yield_queue.put(None)
+
+    pump_task = asyncio.create_task(pump())
+    try:
+        while True:
+            line = await yield_queue.get()
+            if line is None:
+                break
+            yield {"event": "line", "data": line}
+        await pump_task
+        rc = await proc.wait()
+        yield {"event": "exit", "data": str(rc)}
+    finally:
+        # If we get here abnormally — the client disconnected (e.g. a page
+        # refresh) mid-stream, cancelling this generator — the subprocess
+        # would otherwise keep running orphaned in the background with
+        # nothing left to consume its output. The pipeline lock releases as
+        # soon as this generator unwinds (see _locked_sse), so without this,
+        # a new run could start immediately and race the orphaned one on the
+        # same SQLite store — exactly what the lock exists to prevent.
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
+        if not pump_task.done():
+            pump_task.cancel()
+
+
+def _locked_sse(gen_factory):
+    """Wrap an SSE generator factory with the shared pipeline lock: 409 if
+    something is already running, otherwise hold the lock for the stream's
+    full duration."""
+    if _pipeline_lock.locked():
+        raise HTTPException(409, "a pipeline operation is already running — wait for it to finish")
+
+    async def gen():
+        async with _pipeline_lock:
+            async for evt in gen_factory():
+                yield evt
+    return EventSourceResponse(gen())
+
+
 # ── search (SSE) ─────────────────────────────────────────────────────────────
 
 class SearchRequest(BaseModel):
@@ -111,47 +209,17 @@ class SearchRequest(BaseModel):
     workers: int = 8
 
 
-# Only one search at a time — two concurrent runs would interleave SSE output
-# in the CMD panel and race on the same store (_auto_reject + upserts).
-_search_lock = asyncio.Lock()
-
-
 async def _stream_search(req: SearchRequest):
-    """Run scrape.py then match.py/auto-reject, yielding each stdout line as an
-    SSE event as it's produced — the CMD panel's data source. Mirrors
-    `main.cmd_search` but streams instead of inheriting the terminal directly."""
+    """Run scrape.py then match.py/auto-reject — mirrors `main.cmd_search` but
+    streams instead of inheriting the terminal directly."""
     env = {"LINKEDIN_POSTED_DAYS": str(req.days)} if req.days else {}
-
-    async def run_streamed(script: Path, *args: str) -> int:
-        proc = await asyncio.create_subprocess_exec(
-            cli.PY, str(script), *args,
-            cwd=str(cli.ROOT), env={**os.environ, **env},
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        )
-        yield_queue: asyncio.Queue = asyncio.Queue()
-
-        async def pump():
-            assert proc.stdout is not None
-            async for raw in proc.stdout:
-                await yield_queue.put(raw.decode(errors="replace").rstrip("\n"))
-            await yield_queue.put(None)
-
-        pump_task = asyncio.create_task(pump())
-        while True:
-            line = await yield_queue.get()
-            if line is None:
-                break
-            yield {"event": "line", "data": line}
-        await pump_task
-        rc = await proc.wait()
-        yield {"event": "exit", "data": str(rc)}
 
     yield {"event": "line", "data": f"$ scrape.py --source {req.source} --queries "
                                      f"{req.queries!r} --locations {req.locations!r} "
                                      f"--limit {req.limit} --workers {req.workers}"}
     async for evt in run_streamed(cli.SCRAPE, "--source", req.source, "--queries", req.queries,
                                   "--locations", req.locations, "--limit", str(req.limit),
-                                  "--workers", str(req.workers)):
+                                  "--workers", str(req.workers), env=env):
         yield evt
     yield {"event": "line", "data": "\n$ match.py"}
     async for evt in run_streamed(cli.MATCH):
@@ -165,14 +233,100 @@ async def _stream_search(req: SearchRequest):
 
 @app.post("/api/search")
 async def post_search(req: SearchRequest):
-    if _search_lock.locked():
-        raise HTTPException(409, "a search is already running — wait for it to finish")
+    return _locked_sse(lambda: _stream_search(req))
 
-    async def gen():
-        async with _search_lock:
-            async for evt in _stream_search(req):
-                yield evt
-    return EventSourceResponse(gen())
+
+# ── prep (SSE) ───────────────────────────────────────────────────────────────
+# Full parity with `main.py prep`'s flags. Rather than reimplementing its
+# job-selection/staging logic here, this runs `main.py prep <flags>` itself as
+# a single subprocess (via the shared run_streamed) — one source of truth for
+# that logic, same as the CLI.
+
+_PREP_LLM_CHOICES = ("claude", "grok", "deepseek", "nvidia", "api")
+_PREP_SELECTIONS = ("pending", "eligible", "needs_mod", "stretch", "llm_best", "jobs")
+_PREP_SELECTION_FLAGS = {
+    "eligible": "--eligible", "needs_mod": "--needs-mod",
+    "stretch": "--stretch", "llm_best": "--llm-best",
+}
+
+
+class PrepRequest(BaseModel):
+    llm: str = "claude"
+    selection: str = "pending"  # pending = every matched job lacking a jd_brief
+    jobs: str | None = None  # comma-separated ids, required when selection == "jobs"
+    modify_resume: bool = False
+    limit: int | None = None
+
+
+async def _stream_prep(args: list[str]):
+    yield {"event": "line", "data": f"$ main.py {' '.join(args)}"}
+    async for evt in run_streamed(cli.ROOT / "main.py", *args):
+        yield evt
+    yield {"event": "done", "data": json.dumps({"stats": store.stats()})}
+
+
+@app.post("/api/prep")
+async def post_prep(req: PrepRequest):
+    if req.llm not in _PREP_LLM_CHOICES:
+        raise HTTPException(400, f"invalid llm {req.llm!r}; choices: {_PREP_LLM_CHOICES}")
+    if req.selection not in _PREP_SELECTIONS:
+        raise HTTPException(400, f"invalid selection {req.selection!r}; choices: {_PREP_SELECTIONS}")
+    if req.selection == "jobs" and not (req.jobs or "").strip():
+        raise HTTPException(400, "selection 'jobs' requires a non-empty comma-separated job id list")
+    if req.limit is not None and req.limit < 1:
+        raise HTTPException(400, "limit must be >= 1")
+
+    args = ["prep", "--llm", req.llm]
+    if req.selection in _PREP_SELECTION_FLAGS:
+        args.append(_PREP_SELECTION_FLAGS[req.selection])
+    elif req.selection == "jobs":
+        args += ["--jobs", req.jobs]  # type: ignore[list-item] — validated non-empty above
+    if req.modify_resume:
+        args.append("--modify-resume")
+    if req.limit is not None:
+        args += ["--limit", str(req.limit)]
+
+    return _locked_sse(lambda: _stream_prep(args))
+
+
+# ── rank (SSE) ───────────────────────────────────────────────────────────────
+
+_RANK_LLM_CHOICES = ("python", "grok", "deepseek", "nvidia", "api")
+
+
+class RankRequest(BaseModel):
+    llm: str = "python"
+    limit: int = 20
+    eligible: bool = False
+    jobs: str | None = None
+    save: bool = False
+
+
+async def _stream_rank(args: list[str]):
+    yield {"event": "line", "data": f"$ main.py {' '.join(args)}"}
+    async for evt in run_streamed(cli.ROOT / "main.py", *args):
+        yield evt
+    yield {"event": "done", "data": json.dumps({"stats": store.stats()})}
+
+
+@app.post("/api/rank")
+async def post_rank(req: RankRequest):
+    if req.llm not in _RANK_LLM_CHOICES:
+        raise HTTPException(400, f"invalid llm {req.llm!r}; choices: {_RANK_LLM_CHOICES}")
+    if req.limit < 1:
+        raise HTTPException(400, "limit must be >= 1")
+
+    args = ["rank", "--llm", req.llm]
+    if req.llm != "python":
+        args += ["--limit", str(req.limit)]
+        if req.eligible:
+            args.append("--eligible")
+        if req.jobs:
+            args += ["--jobs", req.jobs]
+        if req.save:
+            args.append("--save")
+
+    return _locked_sse(lambda: _stream_rank(args))
 
 
 # ── reset ─────────────────────────────────────────────────────────────────
@@ -184,6 +338,43 @@ class ResetRequest(BaseModel):
 @app.post("/api/reset")
 def post_reset(req: ResetRequest) -> dict:
     return store.reset(hard=req.hard)
+
+
+# ── outcome logging (pure status-recording — never submits anything) ────────
+# Wraps apply-agent's `log` subcommand, which itself refuses to log a job that
+# isn't at status 'tailored' (the apply gate — no separate 'ready' stage) —
+# see apply.py's `log()`. This endpoint does not open a browser, fill a form,
+# or click submit; it only records the outcome a human already acted on
+# elsewhere.
+
+_LOG_OUTCOMES = ("applied", "skipped", "failed")
+
+
+class LogRequest(BaseModel):
+    job: int
+    outcome: str
+    note: str | None = None
+    # Bypasses apply.py's "job must be at status 'tailored'" guard — for
+    # deliberately recording an outcome on a job that never went through this
+    # tool's own prep flow (e.g. applied to it elsewhere). Still pure
+    # status-recording: never opens a browser, never submits anything: it only
+    # overrides which jobs the write is allowed to target.
+    force: bool = False
+
+
+@app.post("/api/log")
+def post_log(req: LogRequest) -> dict:
+    if req.outcome not in _LOG_OUTCOMES:
+        raise HTTPException(400, f"invalid outcome {req.outcome!r}; choices: {_LOG_OUTCOMES}")
+    args = [cli.PY, str(cli.APPLY), "log", "--job", str(req.job), "--outcome", req.outcome]
+    if req.note:
+        args += ["--note", req.note]
+    if req.force:
+        args.append("--force")
+    proc = subprocess.run(args, cwd=str(ROOT), capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise HTTPException(400, (proc.stdout + proc.stderr).strip() or "log failed")
+    return {"ok": True, "job": store.get_job(req.job)}
 
 
 # ── session env ──────────────────────────────────────────────────────────────
@@ -371,3 +562,27 @@ def get_resume_pdf() -> FileResponse:
     if not RESUME_PDF.exists():
         raise HTTPException(404, "PDF not built yet — save the résumé to compile it")
     return FileResponse(RESUME_PDF, media_type="application/pdf")
+
+
+@app.get("/api/jobs/{job_id}/resume/pdf")
+def get_job_resume_pdf(job_id: int) -> FileResponse:
+    """Serve the résumé PDF a specific job's `tailored_resume_path` points at
+    (set by resume-tailor once it runs — the master PDF verbatim for
+    eligible/as-is jobs, a per-job tailored PDF for needs_mod/stretch). 404 if
+    tailor hasn't run for this job yet; the frontend falls back to linking the
+    master résumé directly for the eligible tier in that case."""
+    job = store.get_job(job_id)
+    if job is None:
+        raise HTTPException(404, f"no job with id {job_id}")
+    rel = job.get("tailored_resume_path")
+    if not rel:
+        raise HTTPException(404, f"job {job_id} has no tailored résumé yet")
+    path = (ROOT / rel) if not Path(rel).is_absolute() else Path(rel)
+    try:
+        resolved = path.resolve()
+        resolved.relative_to(ROOT.resolve())
+    except ValueError:
+        raise HTTPException(400, "résumé path is outside the project root") from None
+    if not resolved.exists():
+        raise HTTPException(404, f"résumé file not found on disk: {rel}")
+    return FileResponse(resolved, media_type="application/pdf")

@@ -12,9 +12,9 @@ export function SourceReport({ sources }: { sources: Source[] }) {
   const availableCount = sources.filter((s) => s.available).length
 
   return (
-    <div className="rounded-lg border bg-card p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm font-medium">
+    <div className="rounded-xl border bg-card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-base font-medium">
           Sources — {availableCount}/{sources.length} available
         </span>
       </div>

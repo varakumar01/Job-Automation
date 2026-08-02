@@ -1,19 +1,24 @@
 ---
 name: humanise-responder
 description: >
-  Draft honest, human-sounding application answers and a cover letter for each tailored
-  job, grounded in the candidate's real résumé + the job's jd_brief. Trigger on "draft
-  answers", "write a cover letter", "answer the application questions", "humanise
-  responses", "prep application answers". Reads status `tailored` (jobs lacking
-  `answers_json`), writes `answers_json`, advances `tailored → ready`.
+  RETIRED FROM THE ACTIVE PIPELINE (2026-07-11) — main.py prep no longer calls this.
+  Still runnable manually to draft a cover letter + application answers for a tailored
+  job, grounded in the candidate's real résumé + the job's jd_brief. Trigger only on an
+  explicit manual request: "draft answers for job N", "write a cover letter for <job>".
+  Reads status `tailored` (jobs lacking `answers_json`), writes `answers_json` only —
+  does not advance status (there's no separate `ready` stage anymore).
 model: sonnet
 ---
 
 # humanise-responder
 
-Pipeline stage **5** (PLAN.md §5) — the last skill before apply-agent. For each job at
-`tailored` that lacks `answers_json`, it drafts a **cover letter** plus answers to the
-common open-ended application questions, then advances `tailored → ready`.
+**Retired from the automated pipeline 2026-07-11** — owner decision: no direct-apply
+automation is ever planned, so pre-drafting screening answers ahead of the human apply
+gate served no purpose. A `tailored` job (résumé decided) is already apply-gate-ready on
+its own; `main.py prep` stops there and no longer calls this skill. This script is left
+in place and still works if invoked manually — for each job at `tailored` that lacks
+`answers_json`, it drafts a **cover letter** plus answers to the common open-ended
+application questions and attaches them to the job, without changing its status.
 
 **Honest by construction.** Every answer is grounded in the candidate's real résumé
 (`candidate_profile` = summary + key achievements + skills, parsed from the master
@@ -58,7 +63,7 @@ this to populate form fields and stops for review.
 **any mode:**
 ```bash
 .venv/bin/python .claude/skills/humanise-responder/scripts/respond.py        # auto: prepare (session) | run (api/grok)
-.venv/bin/python .claude/skills/humanise-responder/scripts/respond.py show    # tailored (pending) + ready jobs
+.venv/bin/python .claude/skills/humanise-responder/scripts/respond.py show    # tailored jobs, split by answers-on-file or not
 ```
 
 `--limit N` caps jobs (cost in api/grok). `--master <tex>` overrides the résumé. Each

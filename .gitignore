@@ -48,3 +48,6 @@ web/dist-static/
 
 # Screenshot-test artifacts
 test/
+
+# dev.sh runtime state (PIDs + logs for the local backend/frontend/static servers)
+.run/

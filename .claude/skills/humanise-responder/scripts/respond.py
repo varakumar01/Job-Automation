@@ -1,12 +1,18 @@
 """humanise-responder — draft honest, human-sounding application answers. PLAN §5 #5.
 
+RETIRED FROM THE ACTIVE PIPELINE 2026-07-11 — ``main.py prep`` no longer calls this
+script. Owner decision: no direct-apply automation is ever planned, so pre-drafting
+screening answers ahead of the human apply gate serves no purpose; a ``tailored`` job
+is already apply-gate-ready on its own (see PLAN §9). The script still works if you
+want to run it manually for the cover-letter/answers drafting itself.
+
 For each job at status ``tailored`` that lacks ``answers_json``, produce a cover
 letter plus answers to the common open-ended application questions, GROUNDED in the
 candidate's real résumé + the job's ``jd_brief`` — never fabricating experience.
 Factual screening fields only the candidate can supply (notice period, expected CTC,
 relocation) are listed in ``screening_todo`` for the human to fill at the apply gate,
-not invented. Writes ``answers_json`` and advances ``tailored → ready``. Per-job
-persistence = resumable.
+not invented. Writes ``answers_json`` only — status stays ``tailored`` (there's no
+separate ``ready`` stage anymore). Per-job persistence = resumable.
 
 Runs in all three LLM modes (PLAN §9 · execution/llm.py), same as jd-understander:
 
@@ -249,8 +255,11 @@ def _pending_jobs(limit: int | None, ids: list[int] | None = None) -> list[dict]
 
 
 def _store_answers(job_id: int, answers: dict) -> None:
-    store.update_job(job_id, answers_json=json.dumps(answers, ensure_ascii=False),
-                     status="ready")
+    # No longer advances status: "ready" was retired 2026-07-11 (owner decision — no
+    # direct-apply automation is ever planned, so pre-drafted answers have nothing to
+    # feed into). A "tailored" job is already apply-gate-ready; this just attaches
+    # answers_json to it for whoever still wants to run this skill manually.
+    store.update_job(job_id, answers_json=json.dumps(answers, ensure_ascii=False))
 
 
 # ── session mode ───────────────────────────────────────────────────────────
@@ -365,7 +374,7 @@ def run(limit: int | None, master_path: Path, ids: list[int] | None = None) -> i
             break
         _store_answers(j["id"], answers)
         done += 1
-        print(f"  ✓ job {j['id']}: {(j.get('title') or '')[:40]} → ready")
+        print(f"  ✓ job {j['id']}: {(j.get('title') or '')[:40]} → answers saved")
         vprint(1, f"    screening_todo: {answers.get('screening_todo', [])}")
     store.export_json()
     print(f"\nanswered {done}, {failed} failed. {store.stats()}")
@@ -373,19 +382,24 @@ def run(limit: int | None, master_path: Path, ids: list[int] | None = None) -> i
 
 
 def show() -> int:
-    tailored = store.get_jobs(status="tailored")
-    ready = store.get_jobs(status="ready")
-    print(f"{len(tailored)} tailored (awaiting answers), {len(ready)} ready:\n")
-    for j in tailored:
+    # No separate "ready" status anymore — every "tailored" job is already
+    # apply-gate-ready. Split the same query by whether answers_json is on file
+    # purely for this display, not as a pipeline stage.
+    all_tailored = store.get_jobs(status="tailored")
+    awaiting = [j for j in all_tailored if not (j.get("answers_json") or "").strip()]
+    answered = [j for j in all_tailored if (j.get("answers_json") or "").strip()]
+    print(f"{len(awaiting)} tailored awaiting answers, {len(answered)} with answers on file "
+          f"(both are apply-gate-ready — 'ready' isn't a separate stage):\n")
+    for j in awaiting:
         print(f"  [ ] {(j.get('title') or '')[:42]:<42} @ {(j.get('company') or '')[:22]} ({j['source']})")
-    for j in ready:
+    for j in answered:
         todo = ""
         try:
             todo = ", ".join(json.loads(j.get("answers_json") or "{}").get("screening_todo") or [])
         except json.JSONDecodeError:
             pass
         print(f"  [✓] {(j.get('title') or '')[:42]:<42} @ {(j.get('company') or '')[:22]} "
-              f"→ ready{f'  (fill: {todo})' if todo else ''}")
+              f"→ answers on file{f'  (fill: {todo})' if todo else ''}")
     return 0
 
 

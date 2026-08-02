@@ -310,9 +310,9 @@ def _llm_env(provider: str) -> dict:
 def cmd_prep(args) -> int:
     if args.llm == "claude":
         print("--llm=claude → session mode: the writing is done by the Claude Code "
-              "session.\nJust ask Claude: \"run jd-understander, resume-tailor and "
-              "humanise-responder for the matched jobs\" — it will prepare/save each "
-              "stage. (No automation here by design.)")
+              "session.\nJust ask Claude: \"run jd-understander and resume-tailor for "
+              "the matched jobs\" — it will prepare/save each stage. "
+              "(No automation here by design.)")
         return 0
     env = _llm_env(args.llm)
     lim = ["--limit", str(args.limit)] if args.limit is not None else []
@@ -337,7 +337,7 @@ def cmd_prep(args) -> int:
         ids = [j["id"] for j in store.get_jobs(status="matched") if classify(j) in wanted]
         if not ids:
             print(f"no {' or '.join(sorted(wanted))} jobs at 'matched' to prep "
-                  "(they may already be ready). Nothing to do.")
+                  "(they may already be tailored). Nothing to do.")
             return 0
     jobs_arg = ["--jobs", ",".join(map(str, ids))] if ids else []
     id_set = set(ids) if ids else None
@@ -381,10 +381,10 @@ def cmd_prep(args) -> int:
             print(f"  {len(elig)} eligible job(s) → master résumé as-is")
             _run(TAILOR, "--no-modify", "--jobs", ",".join(map(str, elig)))
         _run(TAILOR, "run", *lim, *jobs_arg, env=env)  # the rest (needs_mod + stretch) get tailored
-
-    # 3) Answers for every tailored job in scope.
-    if _run(RESPOND, "run", *lim, *jobs_arg, env=env) != 0:
-        print("⚠ humanise-responder reported errors; continuing.", file=sys.stderr)
+    # Prep ends here — a "tailored" job is apply-gate-ready. humanise-responder
+    # (pre-drafting screening-question answers) is retired from this flow: no
+    # direct-apply automation is ever planned, so there was nothing to feed
+    # pre-drafted answers into. The skill script still exists if that changes.
 
     print("\n" + "=" * 60)
     print(f"Pipeline state: {store.stats()}")
@@ -410,7 +410,7 @@ def cmd_applied(args) -> int:
     buckets = {s: store.get_jobs(status=s) for s in ("applied", "skipped", "failed")}
     total = sum(len(v) for v in buckets.values())
     if not total:
-        print("No applications logged yet. Apply to a ready job, then "
+        print("No applications logged yet. Apply to a tailored job, then "
               "`main.py log --job N --outcome applied`.")
         return 0
     icons = {"applied": "✓", "skipped": "↷", "failed": "✗"}
@@ -431,6 +431,8 @@ def cmd_applied(args) -> int:
 
 def cmd_log(args) -> int:
     extra = ["--note", args.note] if args.note else []
+    if args.force:
+        extra.append("--force")
     rc = _run(APPLY, "log", "--job", str(args.job), "--outcome", args.outcome, *extra)
     if rc == 0 and args.screenshot:
         store.init_db()
@@ -444,7 +446,7 @@ def cmd_report(args) -> int:
     APPLICATIONS_DIR.mkdir(exist_ok=True)
     # Jobs that have produced artifacts (tailored onward).
     relevant = [j for j in store.get_jobs()
-                if j["status"] in ("tailored", "ready", "applied", "skipped", "failed")]
+                if j["status"] in ("tailored", "applied", "skipped", "failed")]
     relevant = _ordered(relevant)
 
     index = []
@@ -494,7 +496,7 @@ def cmd_report(args) -> int:
 
     # Dashboard.
     applied = [r for r in index if r["status"] in ("applied", "skipped", "failed")]
-    ready = [r for r in index if r["status"] == "ready"]
+    ready = [r for r in index if r["status"] == "tailored"]
     print(f"\n📋 APPLICATIONS — artifacts under {APPLICATIONS_DIR.relative_to(ROOT)}/  "
           f"(index.json + per-job folders)\n")
     print(f"DONE ({len(applied)}):")
@@ -583,7 +585,7 @@ def cmd_reset(args) -> int:
 def cmd_stats(args) -> int:
     """Pipeline funnel: job counts per status."""
     counts = store.stats()
-    order = ["scraped", "matched", "tailored", "ready", "applied", "skipped", "failed",
+    order = ["scraped", "matched", "tailored", "applied", "skipped", "failed",
              "rejected"]
     print("Pipeline funnel:")
     for s in order:
@@ -659,7 +661,7 @@ Pipeline runs left to right:
   rejected      Show the rejected list — excluded from all ranking and prep.
 
 ━━━ PREP ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  prep          Write JD briefs → tailor résumé → draft answers. Advances to 'ready'.
+  prep          Write JD briefs → tailor résumé. Advances to 'tailored' (the apply gate).
     --llm       Who writes: nvidia | grok | deepseek | api | claude
                   nvidia   — NVIDIA NIM (Kimi-k2.6 primary, Mistral-large-3 backup)
                   grok     — Groq free tier (rate-limited)
@@ -873,7 +875,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("apply")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--source", default=None)
-    p.add_argument("--query", default=None, help="filter ready jobs by title/company text")
+    p.add_argument("--query", default=None, help="filter tailored jobs by title/company text")
     p.add_argument("--jobs", default=None, help="comma-separated job ids")
     p.set_defaults(func=cmd_apply)
 
@@ -882,6 +884,8 @@ def main(argv=None) -> int:
     p.add_argument("--outcome", required=True, choices=["applied", "skipped", "failed"])
     p.add_argument("--note", default=None)
     p.add_argument("--screenshot", default=None)
+    p.add_argument("--force", action="store_true",
+                    help="log even if the job isn't at status 'tailored'")
     p.set_defaults(func=cmd_log)
 
     p = sub.add_parser("report")

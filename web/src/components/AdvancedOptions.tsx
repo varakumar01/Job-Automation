@@ -16,19 +16,49 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { api, type EnvEntry, type PromptEntry } from '@/lib/api'
+import * as v from '@/lib/validate'
 
-export function AdvancedOptions() {
+export function AdvancedOptions({
+  forceApply,
+  onForceApplyChange,
+}: {
+  forceApply: boolean
+  onForceApplyChange: (value: boolean) => void
+}) {
   const [open, setOpen] = useState(false)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm" />}>
+      <DialogTrigger render={<Button variant="outline" size="lg" />}>
         <Gear className="size-4" />
         Advanced
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] max-w-3xl overflow-hidden">
+      {/* DialogContent's own default className includes `sm:max-w-sm` — must
+          override at the same `sm:` breakpoint or tailwind-merge keeps both
+          and the responsive one wins on any real screen (found live: dialog
+          rendered at 384px wide regardless of an unprefixed max-w-4xl here). */}
+      <DialogContent className="max-h-[85vh] max-w-4xl overflow-hidden sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Advanced options</DialogTitle>
         </DialogHeader>
+        <label className="flex items-start gap-2 rounded-md border bg-muted/30 p-2.5 text-xs">
+          <input
+            type="checkbox"
+            checked={forceApply}
+            onChange={(e) => onForceApplyChange(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="font-medium">Force-enable Applied/Skip/Failed on any job</span>
+            <br />
+            <span className="text-muted-foreground">
+              Normally those buttons only work once a job is "tailored" (résumé decided).
+              Turning this on lets you record an outcome on any job — e.g. one you applied to
+              outside this tool. Still pure status-recording: it never opens a browser or
+              submits anything, it only changes which jobs the record button is allowed to
+              target.
+            </span>
+          </span>
+        </label>
         <Tabs defaultValue="env" className="min-h-0">
           <TabsList>
             <TabsTrigger value="env">Env</TabsTrigger>
@@ -71,7 +101,7 @@ function EnvTab() {
 
   async function save(key: string) {
     const value = edits[key]
-    if (value === undefined) return
+    if (value === undefined || v.envValue(value)) return
     await api.setEnv(key, value, persist[key] ?? false)
     toast.success(`${key} updated${persist[key] ? ' (saved to .env)' : ' (this session only)'}`)
     const e = await api.env()
@@ -87,32 +117,38 @@ function EnvTab() {
         Values are session-only by default (this server process + its subprocesses only —
         gone on restart). Check "save to .env" to persist a value permanently.
       </p>
-      {Object.entries(env).map(([key, entry]) => (
-        <div key={key} className="grid grid-cols-[1fr_auto] items-center gap-2">
-          <div>
-            <Label className="font-mono text-xs">{key}</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder={entry.set ? entry.value : '(not set)'}
-                value={edits[key] ?? ''}
-                onChange={(e) => setEdits((prev) => ({ ...prev, [key]: e.target.value }))}
-                className="h-8 font-mono text-xs"
-              />
-              <Button size="sm" variant="secondary" onClick={() => save(key)}>
-                Set
-              </Button>
+      {Object.entries(env).map(([key, entry]) => {
+        const value = edits[key] ?? ''
+        const error = value ? v.envValue(value) : null
+        return (
+          <div key={key} className="grid grid-cols-[1fr_auto] items-center gap-2">
+            <div>
+              <Label className="font-mono text-xs">{key}</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder={!entry.set ? '(not set)' : entry.value || '(set, but empty)'}
+                  value={value}
+                  onChange={(e) => setEdits((prev) => ({ ...prev, [key]: e.target.value }))}
+                  className="h-8 font-mono text-xs"
+                  aria-invalid={!!error}
+                />
+                <Button size="sm" variant="secondary" onClick={() => save(key)} disabled={!!error}>
+                  Set
+                </Button>
+              </div>
+              {error && <p className="mt-0.5 text-[11px] text-destructive">{error}</p>}
+              <label className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={persist[key] ?? false}
+                  onChange={(e) => setPersist((prev) => ({ ...prev, [key]: e.target.checked }))}
+                />
+                save to .env (persists across restarts)
+              </label>
             </div>
-            <label className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={persist[key] ?? false}
-                onChange={(e) => setPersist((prev) => ({ ...prev, [key]: e.target.checked }))}
-              />
-              save to .env (persists across restarts)
-            </label>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -207,6 +243,7 @@ const PROFILE_FIELDS: Array<{ key: string; label: string; type?: 'text' | 'check
 function ProfileTab() {
   const [profile, setProfile] = useState<Record<string, unknown>>({})
   const [loading, setLoading] = useState(true)
+  const [touched, setTouched] = useState(false)
 
   useEffect(() => {
     api.profile().then((p) => {
@@ -219,7 +256,15 @@ function ProfileTab() {
     setProfile((prev) => ({ ...prev, [key]: value }))
   }
 
+  const fieldErrors: Record<string, string | null> = {
+    full_name: v.required((profile.full_name as string) ?? '', 'Full name'),
+    email: v.email((profile.email as string) ?? ''),
+  }
+  const hasErrors = Object.values(fieldErrors).some(Boolean)
+
   async function save() {
+    setTouched(true)
+    if (hasErrors) return
     await api.saveProfile(profile)
     toast.success('Profile saved to candidate.json')
   }
@@ -229,24 +274,31 @@ function ProfileTab() {
   return (
     <div className="flex flex-col gap-3 p-1">
       <div className="grid grid-cols-2 gap-3">
-        {PROFILE_FIELDS.map(({ key, label, type }) => (
-          <div key={key} className={type === 'checkbox' ? 'flex items-center gap-2' : ''}>
-            <Label className="text-xs">{label}</Label>
-            {type === 'checkbox' ? (
-              <input
-                type="checkbox"
-                checked={Boolean(profile[key])}
-                onChange={(e) => setField(key, e.target.checked)}
-              />
-            ) : (
-              <Input
-                value={(profile[key] as string) ?? ''}
-                onChange={(e) => setField(key, e.target.value)}
-                className="h-8 text-xs"
-              />
-            )}
-          </div>
-        ))}
+        {PROFILE_FIELDS.map(({ key, label, type }) => {
+          const error = touched ? fieldErrors[key] : null
+          return (
+            <div key={key} className={type === 'checkbox' ? 'flex items-center gap-2' : ''}>
+              <Label className="text-xs">{label}</Label>
+              {type === 'checkbox' ? (
+                <input
+                  type="checkbox"
+                  checked={Boolean(profile[key])}
+                  onChange={(e) => setField(key, e.target.checked)}
+                />
+              ) : (
+                <>
+                  <Input
+                    value={(profile[key] as string) ?? ''}
+                    onChange={(e) => setField(key, e.target.value)}
+                    className="h-8 text-xs"
+                    aria-invalid={!!error}
+                  />
+                  {error && <p className="mt-0.5 text-[11px] text-destructive">{error}</p>}
+                </>
+              )}
+            </div>
+          )
+        })}
       </div>
       <div>
         <Label className="text-xs">Preferred locations (comma-separated)</Label>
@@ -292,6 +344,10 @@ function ResumeTab() {
   }, [])
 
   async function compile() {
+    if (!tex.trim()) {
+      setCompileError('résumé content cannot be empty')
+      return
+    }
     setCompiling(true)
     setCompileError(null)
     try {
@@ -313,7 +369,12 @@ function ResumeTab() {
 
   return (
     <div className="flex flex-col gap-2 p-1 lg:flex-row">
-      <div className="flex flex-1 flex-col gap-2">
+      {/* min-w-0 is load-bearing: a flex-1 child's default min-width is its
+          content's intrinsic size, and the .tex source has long unbroken
+          comment-divider lines — without this, the editor column claims
+          nearly all the row and squeezes the PDF preview to a couple of
+          pixels (found live: iframe width=2 vs textarea width=668). */}
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
         <Textarea
           value={tex}
           onChange={(e) => setTex(e.target.value)}
@@ -331,7 +392,7 @@ function ResumeTab() {
         )}
       </div>
       <Separator orientation="vertical" className="hidden lg:block" />
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         {pdfExists ? (
           <iframe
             key={pdfNonce}

@@ -1,0 +1,72 @@
+Lets have options to grab job specific keywords and get a job search order
+like data science, and get all the relative jobs for it etc etc and have a better list
+
+Make a front end UI and make it hostable via github pages and make it efficent and faster and test the UI and use this format to create an UI
+
+find that, is there a way in future to get support and add and get companies names and thier portal sites and be able make a list
+
+
+how many companies does these ats support?, research about each of them and then et all the companies that it supports and then add them into the list, like workdays etc etc
+
+
+
+
+
+
+
+
+
+
+
+links:
+https://cyber-times.in/jobs
+https://www.qualys.com/careers
+https://simbian.zohorecruit.in/jobs/Careers/
+https://sibros.tech/careers
+https://corporate.mattel.com/careers
+https://careers.ey.com/?locale=en_USv
+https://careers.qualcomm.com/careers
+https://careers.atkinsrealis.com/en/jobs?location=india
+https://www.alignerr.com/jobs
+----------------------------------------------------------
+https://jobs.mattel.com/en/search-jobs?k=security&l=Hyderabad%2C+Telangana&r=35&orgIds=2015
+https://careers.ey.com/search/?createNewAlert=false&q=security&optionsFacetsDD_customfield1=&optionsFacetsDD_country=IN&optionsFacetsDD_city=
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+latest fixes:
+
+apollo.io: get company details
+
+.venv/bin/python3 main.py --search --queries "security engineer,penetration tester,detection engineer,network security,network engineer,Vulnerability Researcher,Security Engineer,Vulnerability Management Engineer,Application Security Engineer,Product Security Engineer,Offensive Security Engineer" --days 2
+
+-------------------------------------------------------------------------------
+
+- lets add option to export the data and then import the data
+- lets have a section to have a better keywords for job search! (same in UI and via cmd too)
+
+-------------------------------------------------------------------------------
+
+lets change the default options, days - 1 and workers to the best option that allows to giveee faster output and llm to nvidia and removev the rank llm to resume fit section and place that  llm box direcltly beside all sources (above of the current position)
+
+I just ran jobb search and the backend commands shows nothings and just shows running, instead of live
+- lets have the backends commands as a button above left side of the reset button and then when clicked, disaply it as a widget, which can hovevr over all the board and option to  stop the running tasks too and the x cclose button to just close the window (close button doesnt stop thge process) 
+when creating a new sezrch does it replace or cancat to the existing fields / jobs
+need to change how draft answers look like!
+
+Always concat the jobs when searched, instead of clearing the whole, what does the current one does anyway?
+
+lkets have a reset symbol after selecting applied button or x or skip etc!
+job selection --> specific job ids (show job ids after all jobs below to justify this option)
+what does llm rerankers best pickcers does in job selection?

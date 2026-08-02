@@ -43,9 +43,14 @@ v1 three (added later via plugins).
                  └────┬────┘
    per job, advancing `status`:
    scraped → [profile-matcher] → matched → [jd-understander] (writes jd_brief)
-           → [resume-tailor] → tailored → [humanise-responder] (writes answers)
-           → ready → [apply-agent] → fills form → ⏸ HUMAN REVIEW + SUBMIT
+           → [resume-tailor] → tailored (the apply gate — résumé decided)
+           → [apply-agent] → fills form → ⏸ HUMAN REVIEW + SUBMIT
            → applied | skipped | failed  (outcome logged immediately, per job)
+
+   (No separate `ready` stage — retired 2026-07-11, §9. humanise-responder
+   pre-drafted screening answers before that; still runnable manually, but no
+   direct-apply automation is ever planned, so nothing consumes pre-drafted
+   answers automatically anymore.)
 ```
 
 The orchestrator (Claude) routes between skills; the **browser is driven via the
@@ -85,9 +90,9 @@ Single SQLite DB at `data/jobs.db` (+ a `data/jobs.json` export for inspection).
 | `jd_text` | raw job description |
 | `jd_brief` | jd-understander output (company/role/tools summary) |
 | `match_score` | profile-matcher score (0–100) + chosen role-profile |
-| `status` | `scraped → matched → tailored → ready → applied \| skipped \| failed` |
+| `status` | `scraped → matched → tailored → applied \| skipped \| failed` (no separate `ready` stage — retired 2026-07-11, §9) |
 | `tailored_resume_path` | path to the per-job compiled PDF |
-| `answers_json` | humanise-responder answers (cover letter, screening Qs) |
+| `answers_json` | humanise-responder answers (cover letter, screening Qs) — optional now; the skill is no longer part of the active pipeline |
 | `applied_at`, `outcome`, `notes` | apply-agent result, written per job |
 
 **Dedup:** unique `(source, ext_id)`. **Resumability:** every skill selects rows by
@@ -133,8 +138,8 @@ Each skill is `.claude/skills/<name>/` (SKILL.md + Python `scripts/`). The contr
 | 2 | **profile-matcher** | "rank/prioritize scraped jobs" | master `.tex`, `jobs` | `match_score`, role-profile | `scraped` → `matched` |
 | 3 | **jd-understander** | "understand this job/company" | `jd_text`, web/Glassdoor/AmbitionBox | `jd_brief` | `matched` → (brief set) |
 | 4 | **resume-tailor** | "tailor résumé for this job" | master `.tex`, `jd_brief` | tailored `.tex`+PDF, `tailored_resume_path` | → `tailored` |
-| 5 | **humanise-responder** | "draft answers / cover letter" | `jd_brief`, résumé | `answers_json` | `tailored` → `ready` |
-| 6 | **apply-agent** | "apply to ready jobs" | `ready` rows + artifacts | fills form, `outcome`, `applied_at` | `ready` → `applied\|skipped\|failed` |
+| 5 | **humanise-responder** *(retired from the active pipeline 2026-07-11, §9 — manual-only)* | "draft answers / cover letter" (explicit manual request only) | `jd_brief`, résumé | `answers_json` | `tailored` → `tailored` (no status change) |
+| 6 | **apply-agent** | "apply to tailored jobs" | `tailored` rows + artifacts | fills form, `outcome`, `applied_at` | `tailored` → `applied\|skipped\|failed` |
 
 **Kept existing skill:** `chrome-screenshot-tester` — used by `apply-agent` to verify
 the filled form before the human approves. It stays (generic + directly useful); no
@@ -150,9 +155,10 @@ Detection Eng, Cloud Sec — see README variants) to guide resume-tailor.
 ## §6 Apply Flow & Safety / ToS
 
 - **Human-in-the-loop is mandatory.** `apply-agent` opens the posting, fills the form
-  with the tailored PDF + `answers_json`, screenshots it (`chrome-screenshot-tester`),
-  then **stops at a review gate**. A human inspects and clicks submit. No
-  fully-autonomous submit path exists in v1.
+  with the tailored PDF (+ `answers_json` if any is on file — usually none now that
+  humanise-responder is retired from the active pipeline, §9), screenshots it
+  (`chrome-screenshot-tester`), then **stops at a review gate**. A human inspects and
+  clicks submit. No fully-autonomous submit path exists in v1.
 - **Per-job logging:** the moment the human acts (or skips), the `outcome`/`applied_at`
   is written to the store — so progress is never lost.
 - **ToS / account-flag risk:** automated interaction with LinkedIn/Naukri can violate
@@ -1338,6 +1344,108 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   not a replacement. Owner is not deploying live yet (no Netlify secrets configured) —
   workflows are built and validated (YAML-parsed, logic-reviewed) but not yet run for
   real in GitHub Actions. [§8]
+- 2026-07-11 — web/ frontend — dev port — **5178** (was 5173), set in
+  `web/vite.config.ts` + `dev.sh`'s `FRONTEND_PORT` default. [§8]
+- 2026-07-11 — web/ frontend — SSE parsing — **fixed a real bug**: `web/src/lib/api.ts`
+  `streamSSE()` split frames on bare `\n\n`/`\n`, but `sse-starlette` terminates events
+  with CRLF (`\r\n\r\n`/`\r\n`) — every search/prep/rank run hung forever in the browser
+  (server responded in ~0.2s; `onDone` never fired). Fixed with a `/\r?\n\r?\n/` /
+  `/\r?\n/` regex split. [§8]
+- 2026-07-11 — server/app.py — subprocess cleanup on disconnect — `run_streamed()` now
+  kills the child process + cancels the pump task in a `finally` block if the SSE
+  generator is torn down abnormally (client disconnect, e.g. a page refresh mid-run).
+  Without this the subprocess kept running orphaned while the pipeline lock had already
+  released, letting a new run race it on the same SQLite store. [§8]
+- 2026-07-11 — server/app.py — output buffering — `run_streamed()` now sets
+  `PYTHONUNBUFFERED=1` on the spawned subprocess's env. Python block-buffers stdout when
+  it isn't a TTY, and that buffering propagates through `main.py`'s own nested
+  `_run()` subprocess calls (understand.py/tailor.py/respond.py) — without this, the CMD
+  panel showed nothing until the ENTIRE prep run finished, then dumped every line at
+  once. Verified in isolation: identical nested-subprocess test showed all output at
+  t=2.03s without the fix, streaming incrementally (t=0.02s, 0.54s, 1.04s, …) with it.
+  [§8]
+- 2026-07-11 — web/ frontend — `/api/lists` scope — now includes every post-match
+  status (`matched, tailored, ready, applied, skipped, failed`), not just `matched`.
+  Previously a job vanished from the Eligible/Needs-mod/Stretch tabs the moment prep
+  advanced it past `matched`, so tailoring/apply progress was invisible in the UI. The
+  CLI's `main.py lists` intentionally stays `matched`-only (it's the prep decision
+  queue); the UI additionally needs prepped/applied jobs to stay visible with status.
+  [§8, revises the Phase 2 UI spec]
+- 2026-07-11 — web/ frontend — Applied/Skip/Failed buttons — added to each job card,
+  visible only at `status='ready'`. **Pure status-recording, never opens a browser or
+  submits anything** — calls a new `POST /api/log` that wraps `apply.py log`, which
+  itself refuses to log any job not already at `ready` (reviewed at the human apply
+  gate elsewhere). Owner's explicit instruction: "this button does nothing but it
+  stores applied status." Verified end-to-end live (staged a test job to `ready`,
+  clicked Applied in the browser, confirmed the real endpoint fired and the row
+  updated, then reverted the test data). [§6 safety gate, §8]
+- 2026-07-11 — execution/llm.py — rate-limit pacing — added `_pace()`: a per-host
+  minimum-interval throttle called before every `_grok_send()` attempt (both the
+  first-pass key rotation and the throttled-retry pass), so a sequential batch run
+  self-paces instead of firing 429s and backing off after the fact. Researched,
+  current-as-of-2026-07-11 limits: Groq (`api.groq.com`) — **30 RPM, documented,
+  per-organization** (console.groq.com/docs/rate-limits) → paced at 2.0s/request.
+  NVIDIA NIM (`integrate.api.nvidia.com`) — **no official rate limit published**;
+  ~40 RPM is a community-reported (developer-forum) figure only, not contractual →
+  paced conservatively at the same 2.0s/request budget. DeepSeek (`api.deepseek.com`)
+  — **no RPM/TPM cap documented**; 429s come from a dynamic per-account concurrency
+  limit instead, and DeepSeek's real current failure mode is `402 Insufficient
+  Balance` (a billing issue pacing cannot fix — free-credit grant, if any, appears
+  exhausted) → light 0.5s pacing only. Anthropic API was left unpaced (Start tier =
+  1,000 RPM, not a bottleneck for this tool's sequential loop). No GitHub Actions
+  workflow calls an LLM provider yet (`scrape.yml` only scrapes), so there was nothing
+  to wire pacing into there — it will apply automatically the moment any future CI job
+  calls `execution.llm.complete()`, since the throttle lives in the shared module.
+  **Also flagged, not yet acted on:** DeepSeek's `deepseek-chat` model name is
+  deprecated 2026-07-24 UTC (aliases to `deepseek-v4-flash` until then) — the model
+  string in `main.py`'s `DEEPSEEK_MODEL` constant needs updating before that date.
+  [§6, new]
+- 2026-07-11 — pipeline — **`ready` status retired; `tailored` is now the apply
+  gate.** Owner: "lets remove ready status! lets disable the section for now for
+  showing draft answers... it doesnt makie sense as Ive decided to not add feature to
+  apply directly in future!" — since no direct-apply browser automation is ever
+  planned, pre-drafting screening-question answers (humanise-responder) ahead of the
+  human apply gate served no purpose; every `tailored` job (résumé decided — for
+  eligible jobs that's the master résumé as-is) is already apply-ready on its own.
+  `main.py prep` no longer calls `humanise-responder`/`respond.py`. `apply.py`'s `log`
+  guard now checks `status == "tailored"` (was `"ready"`); `_ready_jobs()` renamed
+  `_tailored_jobs()`, reads `status="tailored"`. `"ready"` removed from
+  `store.VALID_STATUSES` and `_PUBLIC_STATUSES`. `respond.py` (if run manually) no
+  longer advances status — it only attaches `answers_json` to an already-`tailored`
+  job; its `show()` now splits the same `tailored` query by whether answers are on
+  file, instead of querying a `ready` bucket that no longer exists. The
+  humanise-responder skill itself is NOT deleted (still runnable manually if this
+  changes) but is retired from `prep`'s automated flow. Frontend: `web/`'s Applied/
+  Skip/Failed buttons now gate on `status === 'tailored'`; the "ready to apply" badge
+  label moved onto the `tailored` status entry (was a separate `ready` entry);
+  `PrepPanel`'s label dropped "→ draft answers". A `force` override (`--force` on
+  `apply.py log` / `main.py log`, `force` field on `POST /api/log`, a "Force-enable
+  Applied/Skip/Failed on any job" toggle in Advanced options persisted to
+  localStorage) was added the same session so a human can still record an outcome on
+  a job that never went through this tool's prep flow at all — still pure
+  status-recording, never opens a browser. [§1, §3, §5, §6 — revises the pipeline
+  contract]
+- 2026-07-11 — apply-agent — **eligible jobs are apply-gate-ready straight from
+  `matched`, no prep run required.** Owner: "Eligible already has a taylored resume
+  as master anyways, so enable applied for eligible by default." Rationale:
+  resume-tailor's only move for an `eligible` job is copying the master résumé path
+  verbatim (`MASTER_RESUME = "varakumar_resume.pdf"`) — there is nothing for prep to
+  decide that isn't already decided the moment a job classifies `eligible`. New
+  `apply.py._apply_gate_ready(job)`: true for `status == "tailored"`, OR
+  `status == "matched" and classify(job) == "eligible"`. `log()`'s guard, `packet()`'s
+  queue (renamed `_tailored_jobs` → `_apply_ready_jobs`, now unions `tailored` +
+  eligible-`matched`), and `_packet()`'s résumé-path lookup (falls back to
+  `MASTER_RESUME` when `tailored_resume_path` is unset on an eligible job) all use
+  it. `log()` backfills `tailored_resume_path` to the master résumé on first log if
+  still unset, so the record matches what was actually applied with. No `--force`
+  needed for this case — it's built into the normal gate, not the override. Frontend:
+  `JobsList`'s `gateReady` mirrors the same rule (`tier === 'eligible' && status ===
+  'matched'`), shows the "ready to apply" badge, and calls `api.log()` without
+  `force: true` for this case (the genuine `forceApply` toggle stays reserved for
+  jobs outside both conditions). Verified live end-to-end via CLI (`main.py log`
+  without `--force` on a `matched`+eligible job) and in the browser (buttons
+  full-opacity, no toggle needed, on every eligible-tier card by default). [§5, §6 —
+  revises the 2026-07-11 pipeline-contract entry above]
 
 ---
 

@@ -26,7 +26,11 @@ ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 
 VALID_STATUSES = {
-    "scraped", "matched", "tailored", "ready",
+    # No "ready" stage: a job is apply-gate-ready as soon as it's "tailored" (JD
+    # brief + résumé decided). Screening-answer drafting (humanise-responder) is
+    # retired from the pipeline — owner decision 2026-07-11: no direct-apply
+    # automation is ever planned, so pre-drafting answers served no purpose.
+    "scraped", "matched", "tailored",
     "applied", "skipped", "failed",
     "rejected",  # off-profile / non-relevant — parked so the LLM never ranks/preps it
 }
@@ -254,7 +258,7 @@ _PUBLIC_FIELDS = (
 )
 # Only rows that made it into the real pipeline — raw "scraped" noise and
 # "rejected" off-profile jobs aren't meaningful to a public viewer.
-_PUBLIC_STATUSES = ("matched", "tailored", "ready", "applied")
+_PUBLIC_STATUSES = ("matched", "tailored", "applied")
 
 
 def export_public_json(path: str | os.PathLike[str] | None = None) -> Path:

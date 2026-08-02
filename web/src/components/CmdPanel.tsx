@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { Terminal } from '@phosphor-icons/react'
-import { ScrollArea } from '@/components/ui/scroll-area'
 
 interface CmdPanelProps {
   lines: string[]
@@ -8,17 +7,22 @@ interface CmdPanelProps {
 }
 
 export function CmdPanel({ lines, running }: CmdPanelProps) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' })
+    // Scroll only this panel's own container to its bottom as new lines
+    // arrive — NOT `scrollIntoView`, which bubbles up and scrolls the whole
+    // page too (surfaced once this panel moved below the fold: mounting it
+    // was yanking the entire page down on load to "reveal" an empty panel).
+    const el = viewportRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [lines])
 
   return (
-    <div className="rounded-lg border bg-card">
-      <div className="flex items-center gap-2 border-b px-3 py-2">
-        <Terminal className="size-4 text-muted-foreground" weight="bold" />
-        <span className="text-sm font-medium">Backend commands</span>
+    <div className="rounded-xl border bg-card">
+      <div className="flex items-center gap-2 border-b px-4 py-3">
+        <Terminal className="size-5 text-muted-foreground" weight="bold" />
+        <span className="text-base font-medium">Backend commands</span>
         {running && (
           <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
@@ -26,8 +30,8 @@ export function CmdPanel({ lines, running }: CmdPanelProps) {
           </span>
         )}
       </div>
-      <ScrollArea className="h-64">
-        <pre className="whitespace-pre-wrap break-words p-3 font-mono text-xs leading-relaxed text-foreground/80">
+      <div ref={viewportRef} className="h-80 overflow-y-auto">
+        <pre className="whitespace-pre-wrap break-words p-4 font-mono text-sm leading-relaxed text-foreground/80">
           {lines.length === 0 ? (
             <span className="text-muted-foreground">
               Nothing running yet — start a search to see live output here.
@@ -35,9 +39,8 @@ export function CmdPanel({ lines, running }: CmdPanelProps) {
           ) : (
             lines.join('\n')
           )}
-          <div ref={bottomRef} />
         </pre>
-      </ScrollArea>
+      </div>
     </div>
   )
 }

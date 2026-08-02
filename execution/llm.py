@@ -30,6 +30,7 @@ import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -39,6 +40,59 @@ from execution.keypool import KeyPool, key_hint
 # tokens-per-minute wall). On HTTP 429 we wait the server-suggested delay and retry.
 MAX_RETRIES_429 = 5
 MAX_BACKOFF_SECS = 30.0
+
+# Proactive pacing: sleep BEFORE sending, so a sequential batch run stays under a
+# host's per-minute request cap instead of firing 429s and backing off after the
+# fact. Researched 2026-07-11 (PLAN.md §9):
+#   Groq (api.groq.com)              — 30 RPM is Groq's own documented free-tier
+#                                       cap for llama-3.3-70b-versatile, enforced
+#                                       per-ORGANIZATION (not per-key — rotating
+#                                       keys on the same account doesn't help).
+#                                       console.groq.com/docs/rate-limits
+#   NVIDIA NIM (integrate.api.nvidia.com) — NVIDIA publishes NO official rate
+#                                       limit for the free API-catalog tier;
+#                                       ~40 RPM is a community-reported (forum),
+#                                       not contractual, figure. Paced at the
+#                                       same conservative 30 RPM budget since
+#                                       there's no documented Retry-After either.
+#   DeepSeek (api.deepseek.com)        — DeepSeek's own docs say they do NOT
+#                                       enforce an RPM/TPM cap; 429 instead comes
+#                                       from a dynamic per-account concurrency
+#                                       limit. A light interval still avoids
+#                                       pointless request churn, but the real
+#                                       DeepSeek failure mode is 402 Insufficient
+#                                       Balance (a billing issue, not a rate limit
+#                                       — no amount of pacing fixes that).
+_HOST_MIN_INTERVAL_SECS = {
+    "api.groq.com": 2.0,               # 60s / 30 RPM
+    "integrate.api.nvidia.com": 2.0,   # no official cap published; same conservative budget
+    "api.deepseek.com": 0.5,           # no documented RPM cap — light pacing only
+}
+_DEFAULT_MIN_INTERVAL = 1.0  # unrecognized OpenAI-compatible host — stay conservative
+
+# Unsynchronized by design: every current caller (understand.py, tailor.py,
+# respond.py, llm_rank.py) runs its LLM loop single-threaded within one
+# subprocess, and the server's `_pipeline_lock` ensures only one such
+# subprocess runs at a time. If a future caller ever parallelizes LLM calls
+# with a thread pool, this dict needs a lock.
+_last_request_at: dict[str, float] = {}
+
+
+def _pace(base_url: str) -> None:
+    """Block just long enough to keep sequential requests to `base_url`'s host
+    under its documented (or best-known) per-minute cap. Per-process, in-memory —
+    each `main.py prep`/`rank` run paces its own sequential loop; it doesn't need
+    to survive across runs since a fresh process starts its own request cadence."""
+    host = urllib.parse.urlparse(base_url).netloc
+    interval = _HOST_MIN_INTERVAL_SECS.get(host, _DEFAULT_MIN_INTERVAL)
+    last = _last_request_at.get(host)
+    now = time.monotonic()
+    if last is not None:
+        wait = interval - (now - last)
+        if wait > 0:
+            time.sleep(wait)
+            now = time.monotonic()
+    _last_request_at[host] = now
 
 
 def _retry_after_secs(exc: "urllib.error.HTTPError", body: str) -> float:
@@ -261,6 +315,7 @@ def _complete_grok(prompt: str, *, system: str, max_tokens: int,
     # Pass 1: try each key ONCE, rotating past a throttled/invalid key immediately.
     for key in candidates:
         try:
+            _pace(base)
             raw = _grok_send(url, body, key)
             pool.mark(key, "healthy")
             break
@@ -290,6 +345,10 @@ def _complete_grok(prompt: str, *, system: str, max_tokens: int,
                   f"{key_hint(key)} ({attempt + 1}/{MAX_RETRIES_429})…", file=sys.stderr)
             time.sleep(min(wait, MAX_BACKOFF_SECS))
             try:
+                # The Retry-After sleep above (min 5s) already exceeds every
+                # host's pacing interval (max 2s), so this never adds extra
+                # delay here — it only updates _last_request_at's bookkeeping.
+                _pace(base)
                 raw = _grok_send(url, body, key)
                 pool.mark(key, "healthy")
                 break
