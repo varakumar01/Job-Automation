@@ -12,6 +12,7 @@ data/jobs.json
 data/jobs.public.json
 data/apify_keys.json
 data/grok_keys.json
+data/llm_health.json
 
 # Scratch / intermediate (screenshots, downloads, browser profile)
 .tmp/

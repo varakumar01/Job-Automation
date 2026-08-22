@@ -16,17 +16,18 @@ interface SearchPanelProps {
 export function SearchPanel({ sources, running, run }: SearchPanelProps) {
   const [queries, setQueries] = useState('security engineer, detection engineer')
   const [locations, setLocations] = useState('Hyderabad, Bengaluru, India')
-  const [days, setDays] = useState(7)
+  const [days, setDays] = useState(2)
   const [limit, setLimit] = useState(30)
-  const [workers, setWorkers] = useState(8)
+  const [workers, setWorkers] = useState(0) // 0 = auto: one worker per available plugin
   const [source, setSource] = useState('all')
+  const [recheck, setRecheck] = useState(false)
   const [touched, setTouched] = useState(false)
 
   const errors = {
     queries: v.required(queries, 'Queries'),
     days: v.nonNegativeInt(days, 'Days'),
     limit: v.positiveInt(limit, 'Limit'),
-    workers: v.positiveInt(workers, 'Workers'),
+    workers: v.nonNegativeInt(workers, 'Workers'),
   }
   const hasErrors = Object.values(errors).some(Boolean)
 
@@ -34,7 +35,7 @@ export function SearchPanel({ sources, running, run }: SearchPanelProps) {
     setTouched(true)
     if (hasErrors) return
     run((onLine, onDone, onError) =>
-      streamSearch({ queries, locations, days, source, limit, workers }, onLine, onDone, onError),
+      streamSearch({ queries, locations, days, source, limit, workers, recheck }, onLine, onDone, onError),
     )
   }
 
@@ -87,11 +88,18 @@ export function SearchPanel({ sources, running, run }: SearchPanelProps) {
         <NumberField label="limit" value={limit} onChange={setLimit} error={touched ? errors.limit : null} />
         <NumberField
           label="workers"
-          title="Number of job sources fetched in parallel (multi-threaded — higher = faster, but more load at once)"
+          title="Number of job sources fetched in parallel (multi-threaded). 0 = auto: one worker per available plugin — fastest, all sources at once"
           value={workers}
           onChange={setWorkers}
           error={touched ? errors.workers : null}
         />
+        <label
+          className="flex items-center gap-1.5 text-xs text-muted-foreground"
+          title="Re-evaluate jobs currently at 'rejected' instead of leaving them untouched (e.g. after an eligibility rule change)"
+        >
+          <input type="checkbox" checked={recheck} onChange={(e) => setRecheck(e.target.checked)} />
+          recheck rejected
+        </label>
       </div>
     </div>
   )

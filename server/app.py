@@ -41,6 +41,7 @@ from sse_starlette.sse import EventSourceResponse  # noqa: E402
 
 import main as cli  # noqa: E402 — the existing main.py CLI; reuse its paths/helpers
 from data import store  # noqa: E402
+from execution import llm_health  # noqa: E402
 from execution import prompts as prompt_store  # noqa: E402
 from execution.eligibility import classify  # noqa: E402
 from plugins.registry import discover_plugins  # noqa: E402
@@ -124,6 +125,26 @@ def get_lists() -> dict:
     return tiers
 
 
+# ── LLM provider health ──────────────────────────────────────────────────────
+# Drives the Rank/Prep panels' LLM dropdown: which provider to preselect and how
+# to order/annotate the rest. Probing is blocking network I/O (execution/
+# llm_health.py's _probe() does a synchronous urllib completion call per
+# candidate) — always run it via asyncio.to_thread so a dead provider's timeout
+# can't stall the event loop for every other request. Cheap on a normal page
+# load: llm_health caches results to data/llm_health.json for TTL_SECS (10 min).
+
+@app.get("/api/llm-providers")
+async def get_llm_providers(force: bool = False) -> dict:
+    picked, _ = await asyncio.to_thread(
+        llm_health.pick_provider, cli._llm_env, force_recheck=force)
+    # pick_provider() stops probing at the first success, so its own results
+    # dict can be missing later candidates entirely on a cold cache — use
+    # status_table() (cache-only, always full DEFAULT_ORDER) for the rows the
+    # UI renders, now warmed by whatever pick_provider just probed above.
+    rows = await asyncio.to_thread(llm_health.status_table)
+    return {"picked": picked, "providers": rows}
+
+
 # ── shared subprocess streaming + pipeline lock ─────────────────────────────
 
 # Only one pipeline operation (search/prep/rank) at a time — two concurrent
@@ -150,14 +171,26 @@ async def run_streamed(script: Path, *args: str, env: dict | None = None):
         # soon as it's printed, all the way down the subprocess chain.
         env={**os.environ, "PYTHONUNBUFFERED": "1", **(env or {})},
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        # Default asyncio StreamReader limit is 64 KiB per line; a JD/notes dump
+        # printed on one line (no embedded newline) can exceed that and raise
+        # ValueError, killing the pump mid-run. 1 MiB comfortably covers it.
+        limit=1024 * 1024,
     )
     yield_queue: asyncio.Queue = asyncio.Queue()
 
     async def pump():
-        assert proc.stdout is not None
-        async for raw in proc.stdout:
-            await yield_queue.put(raw.decode(errors="replace").rstrip("\n"))
-        await yield_queue.put(None)
+        # try/finally: without this, an exception here (e.g. a line over the
+        # StreamReader's limit — see below) never queues the `None` sentinel,
+        # so the consumer loop below awaits it forever and the SSE stream
+        # hangs with no error surfaced to the UI.
+        try:
+            assert proc.stdout is not None
+            async for raw in proc.stdout:
+                await yield_queue.put(raw.decode(errors="replace").rstrip("\n"))
+        except Exception as exc:  # noqa: BLE001 — surface it as a line, don't just die silently
+            await yield_queue.put(f"⚠ output pump error: {type(exc).__name__}: {exc}")
+        finally:
+            await yield_queue.put(None)
 
     pump_task = asyncio.create_task(pump())
     try:
@@ -203,32 +236,52 @@ def _locked_sse(gen_factory):
 class SearchRequest(BaseModel):
     queries: str
     locations: str = "Hyderabad,Bengaluru,India"
-    days: int = 7
+    days: int = 2
     source: str = "all"
     limit: int = 30
-    workers: int = 8
+    workers: int = 0  # 0 = auto: one worker per available plugin (see scrape.py)
+    recheck: bool = False
 
 
 async def _stream_search(req: SearchRequest):
-    """Run scrape.py then match.py/auto-reject — mirrors `main.cmd_search` but
-    streams instead of inheriting the terminal directly."""
+    """Run scrape.py -> match.py -> LLM rerank (auto-picked provider) -> auto-reject
+    — full parity with `main.cmd_search`, streamed instead of inheriting the
+    terminal directly."""
     env = {"LINKEDIN_POSTED_DAYS": str(req.days)} if req.days else {}
 
-    yield {"event": "line", "data": f"$ scrape.py --source {req.source} --queries "
-                                     f"{req.queries!r} --locations {req.locations!r} "
-                                     f"--limit {req.limit} --workers {req.workers}"}
-    async for evt in run_streamed(cli.SCRAPE, "--source", req.source, "--queries", req.queries,
-                                  "--locations", req.locations, "--limit", str(req.limit),
-                                  "--workers", str(req.workers), env=env):
+    scrape_args = ["--source", req.source, "--queries", req.queries,
+                   "--locations", req.locations, "--limit", str(req.limit),
+                   "--workers", str(req.workers)]
+    if req.recheck:
+        scrape_args.append("--recheck")
+
+    yield {"event": "line", "data": f"$ scrape.py {' '.join(scrape_args)}"}
+    async for evt in run_streamed(cli.SCRAPE, *scrape_args, env=env):
         yield evt
     yield {"event": "line", "data": "\n$ match.py"}
     async for evt in run_streamed(cli.MATCH):
         yield evt
 
-    rejected = cli._auto_reject()
+    # cli._pick_llm_provider() does blocking urllib network I/O (one probe per
+    # candidate provider) — run it off the event loop so SSE keeps flowing for
+    # any other client, and emit a heartbeat first since a probe against a dead
+    # provider can take several seconds with nothing to print in the meantime.
+    yield {"event": "line", "data": "\nprobing LLM providers (nvidia → grok → deepseek → api)…"}
+    provider, probe_results = await asyncio.to_thread(cli._pick_llm_provider)
+    if provider:
+        yield {"event": "line", "data": f"\nLLM rerank via {provider} (auto-picked)…"}
+        async for evt in run_streamed(cli.LLM_RANK, "--save", env=cli._llm_env(provider)):
+            yield evt
+    else:
+        reasons = "; ".join(f"{p}: {r['detail']}" for p, r in probe_results.items())
+        yield {"event": "line", "data": f"\n⚠ no working LLM provider ({reasons}) — ordering "
+                                         f"by keyword match_score instead."}
+
+    rejected = await asyncio.to_thread(cli._auto_reject)
     if rejected:
         yield {"event": "line", "data": f"\n🚫 auto-rejected {rejected} off-profile job(s)"}
-    yield {"event": "done", "data": json.dumps({"stats": store.stats()})}
+    stats = await asyncio.to_thread(store.stats)
+    yield {"event": "done", "data": json.dumps({"stats": stats})}
 
 
 @app.post("/api/search")
@@ -291,11 +344,11 @@ async def post_prep(req: PrepRequest):
 
 # ── rank (SSE) ───────────────────────────────────────────────────────────────
 
-_RANK_LLM_CHOICES = ("python", "grok", "deepseek", "nvidia", "api")
+_RANK_LLM_CHOICES = ("auto", "grok", "deepseek", "nvidia", "api")
 
 
 class RankRequest(BaseModel):
-    llm: str = "python"
+    llm: str = "auto"
     limit: int = 20
     eligible: bool = False
     jobs: str | None = None
@@ -316,15 +369,13 @@ async def post_rank(req: RankRequest):
     if req.limit < 1:
         raise HTTPException(400, "limit must be >= 1")
 
-    args = ["rank", "--llm", req.llm]
-    if req.llm != "python":
-        args += ["--limit", str(req.limit)]
-        if req.eligible:
-            args.append("--eligible")
-        if req.jobs:
-            args += ["--jobs", req.jobs]
-        if req.save:
-            args.append("--save")
+    args = ["rank", "--llm", req.llm, "--limit", str(req.limit)]
+    if req.eligible:
+        args.append("--eligible")
+    if req.jobs:
+        args += ["--jobs", req.jobs]
+    if req.save:
+        args.append("--save")
 
     return _locked_sse(lambda: _stream_rank(args))
 

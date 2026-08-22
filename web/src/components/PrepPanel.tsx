@@ -1,10 +1,11 @@
-import { useState } from 'react'
-import { Sparkle } from '@phosphor-icons/react'
+import { useMemo, useState } from 'react'
+import { ArrowClockwise, Sparkle } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { streamPrep, type PrepParams } from '@/lib/api'
+import { useLlmProviders } from '@/lib/useLlmProviders'
 import type { StreamFn } from '@/lib/usePipelineRunner'
 import * as v from '@/lib/validate'
 
@@ -38,6 +39,32 @@ export function PrepPanel({ running, run }: PrepPanelProps) {
   const [limit, setLimit] = useState('')
   const [touched, setTouched] = useState(false)
 
+  // Unlike Rank, prep's default stays 'claude' (manual session mode, no API
+  // call, no automation) even once a live provider is known to work — that
+  // default is deliberate, not a fallback, so a health probe never overrides
+  // it. Only the option order/status dots reflect live health here.
+  const { data: health, loading: healthLoading, refresh: refreshHealth } = useLlmProviders()
+  const orderedLlmOptions = useMemo(() => {
+    const rest = LLM_OPTIONS.filter((o) => o.value !== 'claude')
+    if (!health) return LLM_OPTIONS
+    const rank = (value: string) => {
+      const p = health.providers.find((row) => row.provider === value)
+      if (!p || p.ok === null) return 1
+      return p.ok ? 0 : 2
+    }
+    return [LLM_OPTIONS[0], ...[...rest].sort((a, b) => rank(a.value) - rank(b.value))]
+  }, [health])
+  function statusGlyph(value: string): string {
+    if (value === 'claude') return ''
+    const p = health?.providers.find((row) => row.provider === value)
+    if (!p || p.ok === null) return '? '
+    return p.ok ? '✓ ' : '✗ '
+  }
+  function statusDetail(value: string): string | undefined {
+    if (value === 'claude') return undefined
+    return health?.providers.find((row) => row.provider === value)?.detail
+  }
+
   const jobsError = selection === 'jobs' ? v.jobIdList(jobs) : null
   const limitError = limit.trim() ? v.positiveInt(Number(limit), 'Limit') : null
   const hasErrors = !!jobsError || !!limitError
@@ -69,16 +96,30 @@ export function PrepPanel({ running, run }: PrepPanelProps) {
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <Label className="text-xs">LLM</Label>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs">LLM</Label>
+            <button
+              type="button"
+              onClick={() => refreshHealth(true)}
+              disabled={healthLoading}
+              title="re-probe provider health now"
+              className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
+              <ArrowClockwise className={healthLoading ? 'size-3 animate-spin' : 'size-3'} />
+            </button>
+          </div>
           <Select value={llm} onValueChange={(val) => setLlm(val ?? 'claude')}>
             <SelectTrigger className="h-9 w-full text-sm">
               {/* base-ui's Select.Value shows the raw value by default, not the
                   matching item's label — map it explicitly. */}
-              <SelectValue>{(val: string) => LLM_OPTIONS.find((o) => o.value === val)?.label ?? val}</SelectValue>
+              <SelectValue>
+                {(val: string) => `${statusGlyph(val)}${LLM_OPTIONS.find((o) => o.value === val)?.label ?? val}`}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {LLM_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
+              {orderedLlmOptions.map((o) => (
+                <SelectItem key={o.value} value={o.value} title={statusDetail(o.value)}>
+                  {statusGlyph(o.value)}
                   {o.label}
                 </SelectItem>
               ))}

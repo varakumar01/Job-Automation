@@ -561,6 +561,116 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done (review + test passed).
   platforms), `docs/job_portals.md` "Wave 3" section added (methodology + per-platform
   counts + notable exclusions), PLAN.md §9/§10 updated.
 
+**Phase 13 — `search` reliability + LLM auto-select (owner request 2026-08-22: "it
+hung / I killed it" + "auto sorted based on api working or not")**
+- [x] `scrape.py` persists each plugin's rows the moment its future lands (was: only
+  after every plugin finished — a Ctrl-C lost the entire run). Fixed the 3× duplicate
+  fetch from location fan-out (34/39 plugins ignore `location` but were called once
+  per location anyway). Added `--plugin-timeout` (default 180s) so one slow ATS
+  portal can't stall the whole run. Added `--recheck` / `store.upsert_jobs`
+  `rejected_ids` so re-seen `rejected` jobs can re-enter the pipeline instead of
+  staying invisible forever.
+- [x] Self-annealing fix found during this pass's own verification (not in the
+  original plan): the final `if __name__` exit used `raise SystemExit(rc)`, which
+  runs Python's `atexit` hook joining every `ThreadPoolExecutor` worker thread ever
+  created — including ones `--plugin-timeout` deliberately abandoned — reproducing
+  the "hangs, must kill it" symptom at the tail of an otherwise-successful run
+  (live-verified: 5+ min hang after all work was already saved). Switched to
+  `os._exit(rc)`, matching the existing `KeyboardInterrupt` handler.
+- [x] `execution/eligibility.py` `is_security()` now falls back to scanning `jd_text`
+  (≥2 distinct `SEC_TITLE` keyword hits) when the title doesn't settle it — was
+  title-only, auto-rejecting on-profile roles with vague titles (owner: "also read
+  the JD"). Self-annealing fix found while spot-checking the recovery: `"soc"` was
+  substring-matched and fired inside "Associate"/"Social"/etc (129/778 rejected JDs,
+  14/972 titles, including one live false positive already in `matched`) — fixed
+  with a word-boundary regex scoped to that one keyword.
+- [x] New `execution/llm_health.py` (`pick_provider`, modeled on the existing KeyPool
+  pattern) auto-selects the first LLM provider that actually answers right now:
+  nvidia → grok → deepseek → api, live-probed, 10-min cache at `data/llm_health.json`.
+  `rank --llm` default is now `auto` (`python` option removed — `match.py` itself is
+  unchanged, still gates `scraped→matched` and drives score/coverage; only removed as
+  a ranking *choice*). `cmd_search` runs the LLM rerank automatically; falls back to
+  keyword `match_score` with a clear reason if every provider is dead. NVIDIA model
+  ids replaced (`moonshotai/kimi-k2.6` 404, `mistral-large-3` 410 EOL, both dead) with
+  live-verified `nvidia/nemotron-3-super-120b-a12b` / `mistralai/mistral-nemotron`.
+  `cmd_search`'s matcher exit code is now captured/reported instead of discarded.
+- [x] Verified directly (subagent workflow unavailable this session — see below):
+  fan-out fix (1 combo not 2 for a location-ignorant plugin), deterministic
+  KeyboardInterrupt injection (exit 130, prior plugin's rows already committed,
+  message correct, no hang), normal-exit hang fix (full `--source all` run: 133s
+  clean exit vs. 5+ min unkillable-by-Ctrl-C-alone hang before the fix), provider
+  auto-pick (`nvidia` selected, `llm_score` persisted), provider-failure fallback (all
+  4 dead → clean `match.py --show` fallback, no traceback), JD-aware reject (88/778
+  recovered post-fix, several spot-checked against real `jd_text`). Full plan:
+  `checkout-the-main-py-and-happy-candy.md`.
+- Note: this session's top-level tool policy disallowed spawning the `code-reviewer`/
+  `code-tester` subagents (CLAUDE.md's normal review+test loop), so verification above
+  was done directly by the orchestrator (code reading + live execution) instead. Flag
+  for the owner: run the subagent loop on `scrape.py`/`store.py`/`eligibility.py`/
+  `llm_health.py`/`main.py` next session if that policy isn't in effect then.
+
+**Phase 14 — control panel parity: drop `python` ranking, live LLM health in the UI,
+realtime SSE, faster defaults (owner request 2026-08-23)**
+- [x] `python` removed as a rank choice in the web UI + server, matching last session's
+  CLI change: `RankPanel.tsx` `LLM_OPTIONS`/default now `auto`, all four
+  `llm !== 'python'` conditional blocks removed (shortlist/eligible/save always shown);
+  `server/app.py` `_RANK_LLM_CHOICES`/`RankRequest.llm` default `auto`, the
+  `if req.llm != "python"` flag-gate deleted so limit/eligible/jobs/save always pass
+  through to `main.py rank`.
+- [x] New `GET /api/llm-providers?force=` wraps the previously-unused
+  `execution/llm_health.status_table()`/`pick_provider()` (both run via
+  `asyncio.to_thread` — they're blocking urllib network I/O and must not stall the
+  event loop). Probed once on page load (frontend: `web/src/lib/useLlmProviders.ts`),
+  10-min server cache reused; `force=true` re-probes now. `RankPanel`/`PrepPanel`
+  render the LLM dropdown sorted working-first with a ✓/✗/? status dot + hover detail,
+  plus a small refresh button. Rank additionally auto-preselects the live picked
+  provider (e.g. `nvidia`) once known, overriding its `auto` initial value — but only
+  before the user manually touches the selector. Prep intentionally does NOT
+  auto-switch its default off `claude` (session mode, zero API calls by design) — only
+  the option order/status dots reflect live health there.
+- [x] `main.py cmd_keys --llm` now also prints `llm_health.status_table()` (was:
+  Grok-key pool only, even though last session's own error messages already told
+  users to run `keys --llm` for provider detail — that instruction is now true).
+  Newlines embedded in some provider error strings (seen from xAI/DeepSeek error
+  bodies) are collapsed so each row prints on one line.
+- [x] `server/app.py` `_stream_search` brought to full parity with `main.cmd_search`:
+  it was missing the LLM-rerank stage entirely (stopped after `match.py`), so a UI
+  search could never produce a single `llm_score`. Now probes providers (with a
+  heartbeat line first — the probe is several seconds of pure network with nothing to
+  print otherwise), runs `llm_rank.py --save` under the picked provider's env, and
+  falls back to a keyword-score notice if every provider is dead. Also wired `--recheck`
+  end-to-end (new `SearchRequest.recheck` → scrape.py flag → `SearchPanel.tsx` checkbox).
+- [x] Streaming hardening in `run_streamed()`: `pump()` now has try/finally so an
+  exception (e.g. a line over the size limit) still queues the sentinel instead of
+  leaving the SSE stream hung forever with the CMD panel stuck on "running"; raised
+  `asyncio.create_subprocess_exec`'s default 64 KiB StreamReader line limit to 1 MiB
+  (a JD/notes dump printed on one line could exceed the old limit and kill the pump
+  mid-run). `cli._auto_reject()`, `store.stats()`, and the new provider probe inside
+  `_stream_search` all moved to `asyncio.to_thread` (were blocking calls on an async
+  generator, stalling the event loop for the duration).
+- [x] Defaults changed everywhere they're declared: `days` 7 → 2 (`main.py`,
+  `server/app.py` `SearchRequest`, `SearchPanel.tsx`) — still only feeds the LinkedIn
+  plugin's date filter, every other portal ignores it. `workers` 8 → 0 = **auto**
+  (one worker per available plugin, ~38 at once) in `scrape.py`, `main.py`,
+  `server/app.py`, `SearchPanel.tsx`; `scrape.py`'s worker-count formula is
+  `max(1, min(args.workers or len(fetch_plugins) or 1, len(fetch_plugins) or 1))` so
+  an explicit value still caps at the plugin count and `0` means "as parallel as
+  possible." `--plugin-timeout` deliberately left at 180s (owner declined lowering it —
+  cutshort/oraclefusion run ~230–250s per combo and would start timing out).
+- [x] Verified directly (subagent policy unavailable — same as Phase 13): both
+  `npm run build` and `npm run build:static` pass; `main.py search --help` shows the
+  new defaults; `main.py keys --llm` prints Grok pool + provider table cleanly;
+  `/api/llm-providers` returns `picked: "nvidia"` (live-probed, current session) with
+  per-provider detail for the rest; `POST /api/rank {"llm":"python"}` now 400s
+  ("invalid llm 'python'"); a synthetic `run_streamed()` test confirms line-by-line
+  streaming + clean exit; scrape.py's worker-count formula unit-checked (0→38,
+  explicit 8→8, explicit 100 w/ 5 plugins→capped to 5). Full plan:
+  `checkout-the-main-py-and-happy-candy.md`.
+- Note: same tool-policy caveat as Phase 13 — run the `code-reviewer`/`code-tester`
+  subagent loop on `server/app.py`/`main.py`/`scrape.py`/`RankPanel.tsx`/
+  `PrepPanel.tsx`/`SearchPanel.tsx`/`api.ts`/`useLlmProviders.ts` next session if that
+  policy isn't in effect then.
+
 ---
 
 ## §9 Decisions Log  *(append-only; overrides the spec above)*
@@ -1446,6 +1556,120 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   without `--force` on a `matched`+eligible job) and in the browser (buttons
   full-opacity, no toggle needed, on every eligible-tier card by default). [§5, §6 —
   revises the 2026-07-11 pipeline-contract entry above]
+- 2026-08-22 — job-scraper (scrape.py) — persistence — moved the DB upsert from a
+  second pass after the whole `ThreadPoolExecutor` block into the `as_completed` loop
+  itself, so each plugin's rows are committed the instant that plugin's future lands.
+  A Ctrl-C now only loses whatever plugin(s) were still in flight; previously it lost
+  the entire run (root cause of owner-reported "it hung, I killed it, no jobs").
+  [revises §5 job-scraper entry]
+- 2026-08-22 — job-scraper (scrape.py) — location fan-out — `_run_plugin` checks
+  `inspect.signature(plugin.fetch)` once up front: plugins accepting `location`
+  (5/39: linkedin/naukri/indeed/wellfound/_custom_template) still iterate the full
+  query×location cross product; the other ~34, which silently ignored the `location`
+  arg, now run each query exactly once instead of being called `len(locations)` times
+  with identical inputs. Cuts default-run combos ~3× and makes SOURCE REPORT `fetched`
+  counts honest.
+- 2026-08-22 — job-scraper (scrape.py) — per-combo timeout — new `--plugin-timeout`
+  (default 180s) wraps each query×location fetch in a 1-worker `ThreadPoolExecutor`
+  with `fut.result(timeout=...)`; on expiry the combo is recorded as a timeout error
+  in `errors` and the plugin moves to the next combo instead of stalling the run
+  (observed live: cutshort ~250s/combo, oraclefusion ~230s/combo).
+- 2026-08-22 — job-scraper (scrape.py) — normal-exit hang (self-annealing) — the
+  `if __name__` block's `raise SystemExit(rc)` runs Python's `atexit` hook that joins
+  every `ThreadPoolExecutor` worker thread ever created in the process, including ones
+  `--plugin-timeout` deliberately abandoned via `ex.shutdown(wait=False)` — `wait=False`
+  does NOT exempt a thread from that atexit join. This reproduced the "hangs, must
+  kill it" symptom at the very end of an otherwise-successful, fully-persisted run
+  (live-verified: 5+ min hang after `--source all` had already printed its final
+  summary and committed every row). Fixed by calling `os._exit(rc)` instead, matching
+  the existing `KeyboardInterrupt` handler's already-documented rationale.
+- 2026-08-22 — job-scraper/store.py — rejected-job re-entry — owner request (via
+  AskUserQuestion, "Also read the JD" option): `store.upsert_jobs` now returns
+  `rejected_ids` (ids of updated rows whose prior status was `rejected`); new
+  `scrape.py --recheck` (passthrough: `main.py search --recheck`) moves those rows
+  back to `scraped` so the matcher/classifier re-evaluate them under current rules —
+  e.g. after an `eligibility.py` change. Off by default so a normal re-scrape keeps
+  today's resumability untouched. `match.py` needed no change — it already reads
+  `status='scraped'` unconditionally.
+- 2026-08-22 — execution/eligibility.py — `is_security()` JD fallback — owner request:
+  auto-reject was dropping on-profile roles purely because the title lacked a
+  security keyword (628/778 of all `rejected` rows were title-only misses). Title is
+  still the fast path; when it doesn't settle the question, `is_security()` now scans
+  `jd_text` for the same `SEC_TITLE` keywords and requires `JD_SECURITY_MIN_HITS = 2`
+  distinct hits (a single passing mention like "collaborate with the security team"
+  isn't enough). Verified against the live DB: 88/778 currently-`rejected` jobs would
+  be recovered; several spot-checked against real `jd_text` (e.g. TENIOS GmbH's
+  "Sr Software Engineer (Java)" genuinely requires OWASP/threat-modeling/ISO-27001
+  work — a correct recovery, not a false positive).
+- 2026-08-22 — execution/eligibility.py — `"soc"` keyword collision (self-annealing) —
+  found while spot-checking the JD-fallback recovery above: `"soc"` in `SEC_TITLE` was
+  a bare substring match, so it fired inside "Associate", "Social", "associated" etc.
+  Live DB check: 129/778 rejected JDs and 14/972 titles hit this collision vs. only
+  43/15 genuine "SOC" (Security Operations Center) mentions — and it had already let
+  one false positive through to `status='matched'` ("Senior Associate, Regulatory
+  Content Engineer", Ideagen). Fixed with a word-boundary regex (`\bsoc\b`) scoped to
+  just that keyword; every other `SEC_TITLE` entry stays plain substring (either a
+  full word unlikely to collide, or a deliberate stem like "vulnerabilit" that needs
+  substring matching). JD-recovery count dropped 103→88 after the fix.
+- 2026-08-22 — main.py (`rank`/`search`) — LLM provider auto-selection — owner
+  request (verbatim): "lets remove python sorting as it doesnt make sense for
+  sorting and make grok as default ai... if nvidia api working then lets just use
+  nvidia as prio and then grok if its not owkring... i want it auto sorted based on
+  api working or not." New `execution/llm_health.py` (`pick_provider`, modeled on the
+  existing `execution/keypool.py` health-cache pattern) probes nvidia → grok →
+  deepseek → api in order with one cheap completion each, caches results 10 min at
+  `data/llm_health.json`, returns the first that answers. `rank --llm` choices become
+  `auto|nvidia|grok|deepseek|api`, default `auto`; the `python` (deterministic
+  matcher) ranking *option* is removed. `match.py` itself is UNCHANGED — it still
+  gates `scraped→matched` and writes `match_score`/coverage, which `eligibility.py`'s
+  classifier depends on; only the user-facing ranking choice was removed, not the
+  scoring engine. `cmd_search` now runs the LLM rerank automatically after matching;
+  if every provider is currently dead, falls back to keyword `match_score` ordering
+  with the per-provider failure reasons printed, instead of a silent no-op or crash.
+  On today's credentials this resolves to `nvidia` (Groq keys revoked, DeepSeek
+  balance empty, Anthropic key unset — all out of scope, billing/key issues not code).
+  [revises rank's default from §5]
+- 2026-08-22 — main.py — NVIDIA model ids — both prior picks had silently gone dead:
+  `moonshotai/kimi-k2.6` → 404 "not entitled", `mistralai/mistral-large-3-675b-
+  instruct-2512` → 410 Gone/EOL. Replaced with `nvidia/nemotron-3-super-120b-a12b`
+  (primary) / `mistralai/mistral-nemotron` (backup), both live-probed OK 2026-08-22.
+  NIM catalog/entitlements can change without notice — re-verify via
+  `execution/llm_health.py` before trusting this comment again.
+- 2026-08-22 — main.py (`cmd_search`) — exit code — `_run(MATCH)`'s return value was
+  previously discarded, so a matcher failure was invisible and `search` always
+  returned only the scraper's exit code. Now captured, printed as a warning if
+  non-zero, and folded into the overall return code.
+- 2026-08-23 — web UI (`RankPanel.tsx`, `server/app.py`) — `python` ranking option —
+  owner request: "remove python based sorting entirely / removev python ranking
+  entirely." Removed as a *selectable* choice in the web control panel (mirrors last
+  session's CLI change) — `match.py` itself is untouched, still the `scraped→matched`
+  gate. Dead-all-providers path unchanged (falls back to `match.py --show`) per owner:
+  "just remove python from llm ranking as other options work" — no edge-case redesign.
+- 2026-08-23 — web UI (RankPanel/PrepPanel) — LLM dropdown driven by live health —
+  owner request: "make the UI responsive based on available ai software… if nvidia api
+  is working then make nvidia as [default] and show at the top." New
+  `GET /api/llm-providers` wraps the previously-unused `execution/llm_health.
+  status_table()`/`pick_provider()`. Probe timing = **page load + manual refresh
+  button** (owner's explicit choice over alternatives). Rank auto-preselects the live
+  picked provider once known (but not after the user manually changes it); Prep's
+  default stays `claude` (session mode, zero API calls) even once a provider is known
+  healthy — that default is deliberate, only its option order/status dots react to
+  health.
+- 2026-08-23 — server/app.py (`run_streamed`, `_stream_search`) — realtime SSE
+  hardening — owner request: "pipe everything in realtime… if a single line gets
+  printed then even print that in UI." `_stream_search` now runs the LLM-rerank stage
+  (was silently absent — a UI search could never populate `llm_score`, unlike the CLI's
+  `cmd_search`). `pump()` gained a try/finally so an exception can't strand the SSE
+  stream with the sentinel never sent; StreamReader line limit raised 64 KiB → 1 MiB;
+  blocking calls (`_auto_reject`, `store.stats`, the provider probe) moved to
+  `asyncio.to_thread` so they don't stall the event loop mid-stream.
+- 2026-08-23 — search defaults (`main.py`, `server/app.py`, `SearchPanel.tsx`) — `days`
+  7 → **2**, `workers` 8 → **0 = auto** (one worker per available plugin, ~38 at once) —
+  owner request: "make default days as 2 and workers ass fast as possible." Auto-workers
+  chosen over a fixed higher number per owner's explicit pick ("Auto = all plugins at
+  once"); `--plugin-timeout` deliberately left at 180s — owner declined lowering it,
+  since cutshort/oraclefusion run ~230–250s per combo and would start timing out at 90s.
+  `scrape.py --workers 0` now means auto (was: invalid, `< 1` rejected).
 
 ---
 

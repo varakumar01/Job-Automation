@@ -47,6 +47,18 @@ export interface JobLists {
   off_profile: Job[]
 }
 
+export interface LlmProvider {
+  provider: string
+  ok: boolean | null // null = never probed
+  detail: string
+  checked_at: string
+}
+
+export interface LlmProviders {
+  picked: string | null
+  providers: LlmProvider[]
+}
+
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -75,6 +87,7 @@ export const api = {
   },
   stats: () => jsonFetch<Stats>('/api/stats'),
   sources: () => jsonFetch<Source[]>('/api/sources'),
+  llmProviders: (force = false) => jsonFetch<LlmProviders>(`/api/llm-providers?force=${force}`),
   lists: () => jsonFetch<JobLists>('/api/lists'),
   reset: (hard: boolean) =>
     jsonFetch<Record<string, unknown>>('/api/reset', {
@@ -125,6 +138,7 @@ export interface SearchParams {
   source: string
   limit: number
   workers: number
+  recheck?: boolean
 }
 
 export interface PrepParams {

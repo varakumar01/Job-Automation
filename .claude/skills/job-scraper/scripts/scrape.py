@@ -1,8 +1,10 @@
 """job-scraper runner — discover plugins, fetch jobs, store them. PLAN.md §5 #1.
 
 Reads portals (Apify + custom plugins), normalizes to the `jobs` schema, and
-upserts rows at status ``scraped`` (the pipeline entry point). Persists per
-source and logs each scrape to the `runs` table, so an interrupted run resumes.
+upserts rows at status ``scraped`` (the pipeline entry point). Persists each
+plugin's rows to SQLite and logs to the `runs` table THE MOMENT that plugin
+finishes (not after the whole run) — so a Ctrl-C mid-run keeps every plugin
+that had already completed, instead of losing the entire run's work.
 
 Usage::
 
@@ -97,23 +99,60 @@ def _fetch_one_combo(plugin, query: str, limit: int, location: str | None) -> li
     return [j.to_row() for j in jobs]
 
 
-def _run_plugin(plugin, queries: list[str], locations: list[str | None], limit: int) -> dict:
-    """Run every query×location combo for ONE plugin, sequentially (politeness:
-    a single domain is never hit concurrently even though different plugins run
-    in parallel). Returns the raw rows + any per-combo errors; does NOT touch
-    the DB — upserts happen on the main thread after every plugin task has
-    finished, so writes are never concurrent and the report reflects a fully
-    settled run ("wait for all to complete" before advancing the pipeline).
+def _fetch_one_combo_timed(plugin, query: str, limit: int, location: str | None,
+                           timeout: float) -> list[dict]:
+    """``_fetch_one_combo`` with a wall-clock cap. On timeout raises
+    ``TimeoutError`` — the slow underlying call is abandoned (its thread runs to
+    completion in the background but its result is discarded) rather than
+    stalling the whole plugin, let alone the whole run.
+
+    Deliberately NOT a ``with ThreadPoolExecutor(...) as ex:`` block: that
+    would call ``ex.__exit__`` -> ``shutdown(wait=True)`` on the way out,
+    which blocks until the abandoned worker thread finishes on its own —
+    i.e. it would still take the full ~250s for a stuck combo, just raising
+    the timeout error late instead of promptly. Verified empirically: a
+    5s-sleep task with `timeout=1` raised at 5.0s under `with`, at 1.0s here.
+    ``shutdown(wait=False)`` returns immediately; the orphaned thread keeps
+    running until the underlying call finishes (or the process exits), same
+    tradeoff already described above."""
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    fut = ex.submit(_fetch_one_combo, plugin, query, limit, location)
+    try:
+        return fut.result(timeout=timeout)
+    finally:
+        ex.shutdown(wait=False)
+
+
+def _run_plugin(plugin, queries: list[str], locations: list[str | None], limit: int,
+                 timeout: float) -> dict:
+    """Run every combo for ONE plugin, sequentially (politeness: a single domain
+    is never hit concurrently even though different plugins run in parallel).
+    Returns the raw rows + any per-combo errors; does NOT touch the DB — the
+    caller upserts as soon as this plugin's future completes (see ``main()``),
+    so writes are never concurrent and a Ctrl-C only loses the plugin(s) still
+    in flight, not the ones already done.
+
+    Plugins whose ``fetch()`` doesn't accept a ``location`` kwarg (most of
+    them — see ``_fetch_one_combo``) can't act on location at all, so calling
+    them once per location would just re-fetch identical rows
+    len(locations) times. Those run each query exactly ONCE, ignoring
+    locations entirely; only location-aware plugins iterate the full
+    query×location cross product.
     """
+    accepts_location = "location" in inspect.signature(plugin.fetch).parameters
+    combos = ([(loc, q) for loc in locations for q in queries] if accepts_location
+              else [(None, q) for q in queries])
+
     def _run_combos() -> tuple[list[dict], list[str]]:
         rows: list[dict] = []
         errors: list[str] = []
-        for loc in locations:
-            for q in queries:
-                try:
-                    rows.extend(_fetch_one_combo(plugin, q, limit, loc))
-                except Exception as exc:  # noqa: BLE001 — record and keep going
-                    errors.append(f"{q!r}@{loc!r}: {exc}")
+        for loc, q in combos:
+            try:
+                rows.extend(_fetch_one_combo_timed(plugin, q, limit, loc, timeout))
+            except concurrent.futures.TimeoutError:
+                errors.append(f"{q!r}@{loc!r}: timed out after {timeout:.0f}s")
+            except Exception as exc:  # noqa: BLE001 — record and keep going
+                errors.append(f"{q!r}@{loc!r}: {exc}")
         return rows, errors
 
     # Only worth locking if a persistent profile dir actually exists — the
@@ -126,6 +165,7 @@ def _run_plugin(plugin, queries: list[str], locations: list[str | None], limit: 
     profile_dir = os.environ.get("PLAYWRIGHT_USER_DATA_DIR")
     needs_lock = (getattr(plugin, "uses_persistent_profile", False)
                   and profile_dir and os.path.isdir(profile_dir))
+    print(f"  → {plugin.name} starting ({len(combos)} combo(s))...")
     if needs_lock:
         # Never let two persistent-profile plugins launch a browser on the
         # shared PLAYWRIGHT_USER_DATA_DIR profile concurrently (profile lock).
@@ -178,10 +218,21 @@ def main(argv=None) -> int:
     ap.add_argument("--locations", default=None, help="comma-separated location filters")
     ap.add_argument("--limit", type=int, default=10,
                     help="max jobs per source per query×location combo")
-    ap.add_argument("--workers", type=int, default=8,
-                    help="max plugins fetched in parallel (default 8). Each plugin's own "
-                    "query×location combos still run sequentially — a single domain is "
-                    "never hit concurrently")
+    ap.add_argument("--workers", type=int, default=0,
+                    help="max plugins fetched in parallel; 0 (default) = auto, one worker "
+                    "per available plugin (~38 today) so a run finishes in roughly the time "
+                    "of its single slowest source. Each plugin's own query×location combos "
+                    "still run sequentially — a single domain is never hit concurrently")
+    ap.add_argument("--plugin-timeout", type=float, default=180.0,
+                    help="max seconds per query×location combo before it's abandoned and "
+                    "recorded as a timeout error (default 180s) — keeps one slow ATS "
+                    "portal (observed: cutshort ~250s, oraclefusion ~230s per combo) from "
+                    "stalling the whole run")
+    ap.add_argument("--recheck", action="store_true",
+                    help="re-seen jobs that are currently 'rejected' are moved back to "
+                    "'scraped' so the matcher/classifier re-evaluate them (e.g. after an "
+                    "eligibility rule change). Off by default: a normal re-scrape leaves "
+                    "existing pipeline status untouched.")
     ap.add_argument("--list", action="store_true", help="list plugins + availability and exit")
     ap.add_argument("--keys", action="store_true",
                     help="show Apify key health (which keys are usable/exhausted/invalid) and exit")
@@ -219,8 +270,8 @@ def main(argv=None) -> int:
         # would otherwise silently produce zero query×location combos — every
         # plugin "succeeds" with 0 rows and nothing in the output says why.
         locations = [None]
-    if args.workers < 1:
-        ap.error("--workers must be >= 1")
+    if args.workers < 0:
+        ap.error("--workers must be >= 0 (0 = auto: one worker per available plugin)")
 
     store.init_db()
 
@@ -258,69 +309,116 @@ def main(argv=None) -> int:
                             "mechanism": p.mechanism or "?", "available": False,
                             "outcome": "unavailable", "reason": reason})
 
+    # --workers 0 (default) = auto: one worker per available plugin, so the whole
+    # run finishes in roughly the time of its single slowest source instead of
+    # queueing behind a fixed pool. An explicit value is still capped to the
+    # number of plugins actually being fetched — more workers than plugins is a
+    # no-op, not a speedup.
+    worker_count = max(1, min(args.workers or len(fetch_plugins) or 1, len(fetch_plugins) or 1))
+
     print(f"Fetching {len(fetch_plugins)}/{len(targets_all)} available source(s) — "
           f"{len(queries)} quer(ies) × {len(locations)} location(s), "
-          f"up to {args.workers} in parallel.")
+          f"up to {worker_count} in parallel"
+          f"{' (auto)' if not args.workers else ''}.")
 
-    # Run all plugin fetches in parallel; the executor `with` block (plus the
-    # as_completed loop draining every future) guarantees we wait for every
-    # plugin to finish before touching the DB or printing anything further —
-    # nothing downstream (upserts, the matcher) can start on a partial result.
-    plugin_results: dict[str, dict] = {}
-    if fetch_plugins:
-        done_n = 0
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(args.workers, len(fetch_plugins))) as ex:
-            futures = {ex.submit(_run_plugin, p, queries, locations, args.limit): p
-                       for p in fetch_plugins}
-            for fut in concurrent.futures.as_completed(futures):
-                p = futures[fut]
-                try:
-                    plugin_results[p.name] = fut.result()
-                except Exception as exc:  # noqa: BLE001 — defensive; _run_plugin already catches
-                    plugin_results[p.name] = {"rows": [], "errors": [str(exc)]}
-                done_n += 1
-                res = plugin_results[p.name]
-                # Live progress (not gated behind -v): a full --source all run can
-                # legitimately take minutes — some ATS plugins iterate dozens of
-                # configured companies sequentially (e.g. greenhouse ~75, workday
-                # ~39), each a real HTTP round trip. Printing as each plugin lands
-                # is the difference between "still running" and "looks hung".
-                tag = "✗" if (res["errors"] and not res["rows"]) else "✓"
-                print(f"  [{done_n}/{len(fetch_plugins)}] {tag} {p.name} done — "
-                      f"{len(res['rows'])} row(s), {len(res['errors'])} error(s)")
-
-    # Serialize DB upserts on the main thread only (no concurrent writers).
+    # Run plugin fetches in parallel, but persist EACH plugin's rows the moment
+    # its future lands — do not wait for the whole run. A Ctrl-C only loses the
+    # plugin(s) still in flight; everything already `done_n` is already in
+    # SQLite and in `runs`, because the upsert happens right here in the same
+    # loop that drains futures, not in a second pass afterward.
     total_new = 0
+    total_found = 0
+    all_rejected_ids: list[int] = []
     failures: list[str] = []
-    for p in fetch_plugins:
-        res = plugin_results[p.name]
-        rows, errors = res["rows"], res["errors"]
-        counts = store.upsert_jobs(rows) if rows else {"found": 0, "new": 0, "updated": 0}
-        store.log_run("scrape", source=p.name, query=", ".join(queries),
-                      counts={**counts, "errors": errors})
-        total_new += counts["new"]
+    done_n = 0
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=worker_count)
+    try:
+        futures = {ex.submit(_run_plugin, p, queries, locations, args.limit,
+                              args.plugin_timeout): p for p in fetch_plugins}
+        for fut in concurrent.futures.as_completed(futures):
+            p = futures[fut]
+            try:
+                res = fut.result()
+            except Exception as exc:  # noqa: BLE001 — defensive; _run_plugin already catches
+                res = {"rows": [], "errors": [str(exc)]}
+            rows, errors = res["rows"], res["errors"]
 
-        if errors and not rows:
-            outcome, detail = "error", "; ".join(errors[:2])
-            failures.append(p.name)
-        elif counts["found"] == 0:
-            outcome, detail = "empty", None
-        elif errors:
-            outcome, detail = "partial", "; ".join(errors[:2])
-        else:
-            outcome, detail = "ok", None
-        records.append({
-            "name": p.name, "domain": p.base_url or "?", "mechanism": p.mechanism or "?",
-            "available": True, "outcome": outcome, "detail": detail,
-            "fetched": counts["found"], "new": counts["new"], "updated": counts["updated"],
-        })
+            # Upsert THIS plugin's rows now — the only writer, so no concurrent
+            # DB access — before moving on to the next completed future.
+            counts = (store.upsert_jobs(rows) if rows
+                      else {"found": 0, "new": 0, "updated": 0, "rejected_ids": []})
+            store.log_run("scrape", source=p.name, query=", ".join(queries),
+                          counts={k: v for k, v in counts.items() if k != "rejected_ids"} | {"errors": errors})
+            total_new += counts["new"]
+            total_found += counts["found"]
+            all_rejected_ids.extend(counts["rejected_ids"])
+
+            if errors and not rows:
+                outcome, detail = "error", "; ".join(errors[:2])
+                failures.append(p.name)
+            elif counts["found"] == 0:
+                outcome, detail = "empty", None
+            elif errors:
+                outcome, detail = "partial", "; ".join(errors[:2])
+            else:
+                outcome, detail = "ok", None
+            records.append({
+                "name": p.name, "domain": p.base_url or "?", "mechanism": p.mechanism or "?",
+                "available": True, "outcome": outcome, "detail": detail,
+                "fetched": counts["found"], "new": counts["new"], "updated": counts["updated"],
+            })
+
+            done_n += 1
+            # Live progress (not gated behind -v): a full --source all run can
+            # legitimately take minutes — some ATS plugins iterate dozens of
+            # configured companies sequentially (e.g. greenhouse ~75, workday
+            # ~39), each a real HTTP round trip. Printing as each plugin lands
+            # (and is already saved) is the difference between "still running"
+            # and "looks hung".
+            tag = "✗" if (errors and not rows) else "✓"
+            print(f"  [{done_n}/{len(fetch_plugins)}] {tag} {p.name} done — "
+                  f"saved {counts['new']} new / {counts['updated']} updated "
+                  f"(of {counts['found']} found), {len(errors)} error(s)")
+    except KeyboardInterrupt:
+        # Everything upserted above this point is already committed. Don't
+        # wait for in-flight combos to finish (they may be minutes from
+        # timing out) — abandon them and exit now; os._exit skips the
+        # non-daemon-thread join that `ex.shutdown(wait=True)`/interpreter
+        # exit would otherwise block on.
+        ex.shutdown(wait=False, cancel_futures=True)
+        print(f"\n⚠ interrupted — {done_n}/{len(fetch_plugins)} source(s) had already "
+              f"finished and are saved ({total_new} new job(s)). "
+              f"Re-run to pick up the rest.", file=sys.stderr)
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(130)
+    else:
+        ex.shutdown(wait=True)
 
     # Report in discovery order so re-runs are easy to diff.
     order = {p.name: i for i, p in enumerate(all_plugins)}
     records.sort(key=lambda r: order.get(r["name"], len(order)))
 
+    # Dedupe — the same job can be seen by more than one query×location combo
+    # in this same run (e.g. two queries both matching one posting).
+    all_rejected_ids = sorted(set(all_rejected_ids))
+    recheck_n = 0
+    if args.recheck and all_rejected_ids:
+        for job_id in all_rejected_ids:
+            store.update_job(job_id, status="scraped")
+        recheck_n = len(all_rejected_ids)
+
     out = store.export_json()
-    print(f"\n✓ done. {total_new} new job(s). exported → {out}")
+    already_known = total_found - total_new
+    reject_note = ""
+    if all_rejected_ids:
+        reject_note = (f" re-queued {recheck_n} for re-evaluation)" if args.recheck
+                        else f" {len(all_rejected_ids)} previously rejected — "
+                             f"re-run with `--recheck` to re-evaluate them)")
+        reject_note = f" ({already_known} already known,{reject_note}"
+    elif already_known:
+        reject_note = f" ({already_known} already known — unchanged status)"
+    print(f"\n✓ done. {total_new} new job(s){reject_note}. exported → {out}")
     print(f"  stats: {store.stats()}")
     _print_source_report(records)
     if failures:
@@ -331,4 +429,22 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    _rc = main()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    # NOT `raise SystemExit(_rc)` — that runs Python's normal interpreter
+    # shutdown, which calls the atexit hook `concurrent.futures.thread.
+    # _python_exit` that JOINS every ThreadPoolExecutor worker thread ever
+    # created in this process. `_fetch_one_combo_timed`'s per-combo timeout
+    # deliberately abandons a thread on expiry via `ex.shutdown(wait=False)`
+    # so the combo loop can move on — but wait=False does NOT exempt that
+    # thread from the atexit join; SystemExit still blocks on it until its
+    # underlying (possibly timeout-less) HTTP/browser call finishes on its
+    # own. Verified empirically: a run with several timed-out combos
+    # (greenhouse/icims/indeed/lever/oraclefusion/smartrecruiters) hung 5+
+    # minutes AFTER printing its final summary and committing every row to
+    # SQLite — the exact "hangs, have to kill it" symptom this whole fix set
+    # out to remove, just relocated to the very end of a clean run instead of
+    # losing data. os._exit() skips atexit entirely; everything that needed
+    # persisting is already committed by this point, so nothing is lost.
+    os._exit(_rc)

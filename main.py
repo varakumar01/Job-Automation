@@ -73,18 +73,17 @@ DEEPSEEK_MODEL = "deepseek-chat"
 
 # NVIDIA NIM — OpenAI-compatible, 100+ open-weight models, free-tier ~40 req/min.
 # Reuses the `grok` provider path with NVIDIA's base/key/model. Needs NVIDIA_API_KEY (nvapi-…).
-# Model selection (benchmarked 2026-07-04 on real ranking + JD-understand prompts):
-#   Primary   moonshotai/kimi-k2.6 — best seniority-rule calibration (6/6 rubric), bare JSON,
-#             1.6 s rank / 4.7 s understand. Correct absolute scores matter because
-#             eligibility.py gates on absolute 60/70 thresholds.
-#   Backup    mistralai/mistral-large-3-675b-instruct-2512 — fastest (1.3/2.8 s), reliable,
-#             fires only on model-specific errors; strips fenced JSON automatically.
-#   Prev. default (nvidia/llama-3.3-nemotron-super-49b-v1) — latency spikes 93 s on longer
-#             outputs; kept as LLM_SYSTEM_PREFIX guard below prevents its reasoning bleed.
-#   Rejected  meta/llama-3.3-70b-instruct, deepseek-v4-pro — 150 s timeouts on free tier.
+# Model selection (re-verified live 2026-08-22 — both prior picks had gone dead):
+#   Primary   moonshotai/kimi-k2.6 — 404 "Function ... Not found for account" (in the NIM
+#             catalog but not entitled on this account). REPLACED.
+#   Backup    mistralai/mistral-large-3-675b-instruct-2512 — 410 Gone, end-of-life. REPLACED.
+#   Current primary/backup below were both confirmed reachable with a live "Say OK." probe
+#   against this account's actual key on 2026-08-22 — re-verify with
+#   `execution/llm_health.py` (or scrape.py --keys --llm) before trusting this comment again,
+#   NVIDIA's catalog and entitlements change without notice.
 NVIDIA_BASE = "https://integrate.api.nvidia.com/v1"
-NVIDIA_MODEL = "moonshotai/kimi-k2.6"
-NVIDIA_BACKUP_MODEL = "mistralai/mistral-large-3-675b-instruct-2512"
+NVIDIA_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+NVIDIA_BACKUP_MODEL = "mistralai/mistral-nemotron"
 # Sent as the FIRST line of the system prompt on the NVIDIA path to disable Nemotron
 # reasoning-mode (which defaults ON and burns the whole token budget on <think> instead of
 # producing JSON). Harmless for non-reasoning models like Kimi/Mistral; protects any
@@ -127,12 +126,35 @@ def cmd_search(args) -> int:
     # not), instead of the old per-query×location subprocess loop that only ever
     # showed whichever single --source was requested (default was `linkedin`,
     # which is why other aggregators never appeared in the output before).
-    rc = _run(SCRAPE, "--source", args.source, "--queries", args.queries,
-              "--locations", args.locations, "--limit", str(args.limit),
-              "--workers", str(args.workers), env=env)
+    # scrape.py itself persists every plugin's rows the moment that plugin
+    # finishes (not after the whole run), so a Ctrl-C here only loses whatever
+    # plugin(s) were still in flight.
+    scrape_args = ["--source", args.source, "--queries", args.queries,
+                   "--locations", args.locations, "--limit", str(args.limit),
+                   "--workers", str(args.workers)]
+    if getattr(args, "recheck", False):
+        scrape_args.append("--recheck")
+    rc = _run(SCRAPE, *scrape_args, env=env)
     # Rank everything just scraped (only NEW rows advance scraped→matched — resumable/
     # incremental: already-applied/ready/rejected jobs are untouched on a re-search).
-    _run(MATCH)
+    match_rc = _run(MATCH)
+    if match_rc != 0:
+        print(f"\n⚠ profile-matcher exited {match_rc} — scores/coverage above may be "
+              f"stale or incomplete (see its output above for why).", file=sys.stderr)
+        rc = rc or match_rc
+    # LLM-rerank the freshly matched jobs with whichever provider is actually
+    # working right now (nvidia → grok → deepseek → api). `_ordered()` already
+    # prefers llm_score over match_score, so lists sort by real fit the moment
+    # this succeeds; if every provider is currently dead, fall back to the
+    # keyword score with a clear reason instead of a silent no-op.
+    provider, probe_results = _pick_llm_provider()
+    if provider:
+        print(f"\nLLM rerank via {provider} (auto-picked)...")
+        _run(LLM_RANK, "--save", env=_llm_env(provider))
+    else:
+        reasons = "; ".join(f"{p}: {r['detail']}" for p, r in probe_results.items())
+        print(f"\n⚠ no working LLM provider ({reasons}) — ordering by keyword match_score "
+              f"instead. Run `main.py keys --llm` for details.", file=sys.stderr)
     # Park off-profile jobs so the LLM ranker/prep only ever touches relevant ones.
     rejected = _auto_reject()
     if rejected:
@@ -305,6 +327,17 @@ def _llm_env(provider: str) -> dict:
     if provider == "api":
         return {"LLM_PROVIDER": "api"}
     return {"LLM_PROVIDER": "session"}
+
+
+def _pick_llm_provider(force_recheck: bool = False) -> tuple[str | None, dict]:
+    """Auto-select the first LLM provider that actually answers right now
+    (nvidia -> grok -> deepseek -> api). See execution/llm_health.py — the
+    manual `--llm nvidia` etc. choice still exists for when you want to force
+    one, but nothing here should assume yesterday's working provider is
+    today's: accounts, free-tier grants, and model entitlements change
+    without notice (main.py's NVIDIA_MODEL comment has the receipts)."""
+    from execution import llm_health
+    return llm_health.pick_provider(_llm_env, force_recheck=force_recheck)
 
 
 def cmd_prep(args) -> int:
@@ -515,9 +548,11 @@ def cmd_report(args) -> int:
 
 
 def cmd_keys(args) -> int:
-    """Key health. Default = Apify tokens; `--llm` = Grok/Groq keys. `--reset` clears flags."""
+    """Key health. Default = Apify tokens; `--llm` = Grok/Groq keys + LLM provider health.
+    `--reset` clears flags."""
     if args.llm:
         from execution import llm as _llm
+        from execution import llm_health
         pool = _llm._grok_pool()
         if args.reset:
             print(f"reset {pool.reset(args.reset)} Grok key(s) → unknown.")
@@ -526,15 +561,26 @@ def cmd_keys(args) -> int:
         if not rows:
             print("No Grok keys configured. Set XAI_API_KEY (one or many) and/or "
                   "XAI_API_KEY_1 / _2 / … in .env.")
-            return 0
-        icons = {"healthy": "✓", "unknown": "?", "throttled": "⏳", "invalid": "✗"}
-        print(f"{len(rows)} Grok key(s):\n")
-        for r in rows:
-            err = f"  — {r['last_error']}" if r["last_error"] else ""
-            print(f"  {icons.get(r['status'], '?')} [{r['n']}] {r['hint']}   "
-                  f"{r['status']:<9} checked={r['checked_at']}{err}")
-        print("\nlegend: ✓ healthy · ? unused · ⏳ throttled (TPM, auto-recovers ~90s) · "
-              "✗ invalid.  Multiple keys rotate automatically on a 429.")
+        else:
+            icons = {"healthy": "✓", "unknown": "?", "throttled": "⏳", "invalid": "✗"}
+            print(f"{len(rows)} Grok key(s):\n")
+            for r in rows:
+                err = f"  — {r['last_error']}" if r["last_error"] else ""
+                print(f"  {icons.get(r['status'], '?')} [{r['n']}] {r['hint']}   "
+                      f"{r['status']:<9} checked={r['checked_at']}{err}")
+            print("\nlegend: ✓ healthy · ? unused · ⏳ throttled (TPM, auto-recovers ~90s) · "
+                  "✗ invalid.  Multiple keys rotate automatically on a 429.")
+
+        # LLM provider health (nvidia/grok/deepseek/api) — last-known state from
+        # the cache written by `main.py rank --llm auto` / `search`; does NOT
+        # probe live (use `rank --llm auto --recheck-providers` for that).
+        print("\nLLM provider health (last known — `search`/`rank --llm auto` probe live):\n")
+        for row in llm_health.status_table():
+            glyph = "✓" if row["ok"] else ("✗" if row["ok"] is False else "?")
+            # Some provider error strings embed a raw newline (seen from the
+            # xAI/DeepSeek error bodies) — collapse it so the row stays one line.
+            detail = " ".join(row["detail"].split())
+            print(f"  {glyph} {row['provider']:<9} {detail:<50} checked={row['checked_at']}")
         return 0
     if args.reset:
         return _run(SCRAPE, "--reset-keys", args.reset)
@@ -599,15 +645,21 @@ def cmd_stats(args) -> int:
 
 
 def cmd_rank(args) -> int:
-    """Ranked match list. Default = deterministic Python matcher; `--llm grok|api|deepseek`
-    reranks a shortlist by résumé fit (judging the JD duties, not the title)."""
-    if args.llm == "python":
-        if args.eligible or args.jobs or args.save:
-            print("note: --eligible/--jobs/--save apply only to the LLM reranker "
-                  "(--llm grok|deepseek|api); ignored for the Python matcher.",
-                  file=sys.stderr)
-        return _run(MATCH, "--show")
-    env = _llm_env(args.llm)
+    """LLM-reranks a shortlist by résumé fit (judging the JD duties, not the title).
+    `--llm auto` (default) tries nvidia -> grok -> deepseek -> api and uses whichever
+    actually answers right now; `--llm nvidia|grok|deepseek|api` forces one. If every
+    provider is currently dead, falls back to the deterministic keyword matcher
+    (`match.py --show`) instead of failing outright."""
+    provider = args.llm
+    if provider == "auto":
+        provider, probe_results = _pick_llm_provider(force_recheck=args.recheck_providers)
+        if provider is None:
+            reasons = "; ".join(f"{p}: {r['detail']}" for p, r in probe_results.items())
+            print(f"⚠ no working LLM provider ({reasons}) — showing the keyword-matcher "
+                  f"ranking instead. Run `main.py keys --llm` for details.", file=sys.stderr)
+            return _run(MATCH, "--show")
+        print(f"(auto-picked provider: {provider})")
+    env = _llm_env(provider)
     a = ["--limit", str(args.limit)]
     if args.eligible:
         a.append("--eligible")
@@ -635,10 +687,17 @@ Pipeline runs left to right:
     --source    Portal plugin name, or 'all' to run every available one
                   (default: all)
     --days N    Recency window (LinkedIn's date filter only; other portals
-                  ignore it)                    (default: 7; 0 = no filter)
+                  ignore it)                    (default: 2; 0 = no filter)
     --limit N   Max results per plugin per query×location  (default 30)
     --workers N Plugins fetched in parallel (a plugin's own query×location
-                  combos still run one at a time)  (default 8)
+                  combos still run one at a time)  (default 0 = auto, one
+                  worker per available plugin)
+    --recheck   Re-seen jobs currently 'rejected' go back to 'scraped' for
+                  re-evaluation instead of staying invisible forever (off by default)
+                Note: plugins that ignore location (most of them) run each query
+                  ONCE, not once per location; jobs already saved persist per-plugin
+                  as the run goes, so Ctrl-C only loses whatever plugin was still
+                  in flight, not the whole run.
 
 ━━━ TRIAGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   lists         Show the four classified tiers, best-score-first in each.
@@ -647,7 +706,10 @@ Pipeline runs left to right:
   stats         Pipeline funnel — count of jobs at each status.
 
   rank          LLM rerank matched jobs by résumé fit (supplements keyword score).
-    --llm       Provider: nvidia | grok | deepseek | api  (default: python scorer)
+    --llm       auto (default) tries nvidia→grok→deepseek→api and uses whichever
+                  actually answers right now; or force one: nvidia | grok | deepseek | api.
+                  Falls back to the keyword matcher if every provider is dead.
+    --recheck-providers  ignore the 10-min provider-health cache, re-probe now
     --limit N   Shortlist size to rerank  (default 20)
     --eligible  Rank only eligible best-match jobs
     --jobs "…"  Rank only these comma-separated job ids
@@ -663,7 +725,8 @@ Pipeline runs left to right:
 ━━━ PREP ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   prep          Write JD briefs → tailor résumé. Advances to 'tailored' (the apply gate).
     --llm       Who writes: nvidia | grok | deepseek | api | claude
-                  nvidia   — NVIDIA NIM (Kimi-k2.6 primary, Mistral-large-3 backup)
+                  nvidia   — NVIDIA NIM (model ids in main.py's NVIDIA_MODEL/_BACKUP —
+                             re-verified 2026-08-22; NIM entitlements change without notice)
                   grok     — Groq free tier (rate-limited)
                   deepseek — DeepSeek API (paid, cheap, no TPM wall)
                   api      — Anthropic API
@@ -783,7 +846,8 @@ def main(argv=None) -> int:
                             help=argparse.SUPPRESS)
 
     p = sub.add_parser("keys")
-    p.add_argument("--llm", action="store_true", help="show Grok/Groq keys instead of Apify")
+    p.add_argument("--llm", action="store_true",
+                   help="show Grok/Groq keys + LLM provider health instead of Apify")
     p.add_argument("--reset", metavar="WHICH", default=None)
     p.set_defaults(func=cmd_keys)
 
@@ -813,8 +877,13 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("rank")
-    p.add_argument("--llm", choices=["python", "grok", "deepseek", "nvidia", "api"], default="python",
-                   help="python = deterministic matcher; grok/deepseek/nvidia/api = LLM rerank")
+    p.add_argument("--llm", choices=["auto", "grok", "deepseek", "nvidia", "api"], default="auto",
+                   help="auto (default) = try nvidia→grok→deepseek→api, use whichever "
+                        "actually answers right now; or force one provider. Falls back to "
+                        "the deterministic keyword matcher if every provider is dead.")
+    p.add_argument("--recheck-providers", action="store_true",
+                   help="with --llm auto, ignore the cached provider health and re-probe "
+                        "every candidate now (default: reuse a probe result up to 10 min old)")
     p.add_argument("--limit", type=int, default=20, help="shortlist size to rerank")
     p.add_argument("--eligible", action="store_true", help="only eligible best-match jobs")
     p.add_argument("--jobs", default=None, help="comma-separated job ids")
@@ -829,7 +898,7 @@ def main(argv=None) -> int:
                    help="comma-separated cities, e.g. 'Bangalore,Remote' (default: %(default)s)")
     p.add_argument("--queries", default="security engineer,detection engineer,vulnerability",
                    help="comma-separated role keywords (default: %(default)s)")
-    p.add_argument("--days", type=int, default=7,
+    p.add_argument("--days", type=int, default=2,
                    help="recency window in days, applied to the LinkedIn plugin's date filter "
                         "(default: %(default)s; other portals ignore this)")
     p.add_argument("--limit", type=int, default=30,
@@ -837,9 +906,13 @@ def main(argv=None) -> int:
     p.add_argument("--source", default="all",
                    help="portal plugin name (linkedin/naukri/indeed/remoteok/...) or 'all' "
                         "to run every available plugin (default: %(default)s)")
-    p.add_argument("--workers", type=int, default=8,
-                   help="max plugins fetched in parallel; a single plugin's own combos still "
-                        "run sequentially (default: %(default)s)")
+    p.add_argument("--workers", type=int, default=0,
+                   help="max plugins fetched in parallel; 0 (default) = auto, one worker per "
+                        "available plugin. A single plugin's own combos still run sequentially")
+    p.add_argument("--recheck", action="store_true",
+                   help="re-seen jobs currently at 'rejected' are moved back to 'scraped' so "
+                        "the matcher/classifier re-evaluate them (e.g. after an eligibility "
+                        "rule change). Off by default.")
     p.set_defaults(func=cmd_search)
 
     p = sub.add_parser("lists")

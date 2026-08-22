@@ -11,8 +11,10 @@ Classification tiers (2026-07-04 redesign):
                only, not actual management / 6+yr duties). Routed to resume-tailor with a
                heavier rewrite; human opts in. Pure-pentest 4yr, Principal-titled IC roles
                land here instead of the trash.
-  off_profile— hard-nos ONLY: non-security title, genuine SCOPE seniority (manages people /
-               sets strategy / 6+ yrs stated as requirement), or no concrete requirements.
+  off_profile— hard-nos ONLY: neither title NOR jd_text reads as security work
+               (see is_security — title is the fast path, JD is the fallback for
+               vague titles), genuine SCOPE seniority (manages people / sets
+               strategy / 6+ yrs stated as requirement), or no concrete requirements.
                Auto-rejected to keep token spend on relevant jobs only.
 """
 
@@ -72,9 +74,47 @@ def coverage(job: dict[str, Any]) -> float:
         return 0.0
 
 
+# Minimum number of DISTINCT SEC_TITLE keywords that must appear in the JD before
+# a vague-titled job is rescued from off_profile — a single passing mention (e.g.
+# "collaborate with the security team") elsewhere in an unrelated JD shouldn't be
+# enough; two-or-more distinct hits is a much stronger signal the role is actually
+# security work, not just adjacent to it.
+JD_SECURITY_MIN_HITS = 2
+
+# "soc" needs a word-boundary check, not a bare substring: as plain substring it
+# fires inside "Associate", "Social", "associated" etc. Verified against the live
+# DB (2026-08-22): 129/778 rejected JDs and 14/972 titles hit this collision vs.
+# only 43/15 genuine "SOC" (Security Operations Center) mentions — and it had
+# already let at least one false positive ("Senior Associate, Regulatory Content
+# Engineer", Ideagen) through to `matched`. Every other SEC_TITLE entry is either
+# a full word unlikely to collide, or a deliberate stem ("vulnerabilit" for
+# vulnerability/vulnerabilities) that needs substring matching — so this check is
+# scoped to "soc" only, not applied blanket.
+_SOC_RE = re.compile(r"\bsoc\b")
+
+
+def _kw_hit(keyword: str, text: str) -> bool:
+    """One SEC_TITLE keyword against lowercased text, with the 'soc' collision fix."""
+    if keyword == "soc":
+        return bool(_SOC_RE.search(text))
+    return keyword in text
+
+
 def is_security(job: dict[str, Any]) -> bool:
+    """True if the title says security work, OR — when the title doesn't use any
+    of the SEC_TITLE words (e.g. 'Site Reliability Engineer, Trust & Safety') —
+    the job description clearly does (>=JD_SECURITY_MIN_HITS distinct keyword
+    hits). Title-only matching was auto-rejecting on-profile roles with vague
+    titles; this keeps the title as the fast path and only falls through to the
+    JD when it doesn't already settle the question."""
     t = (job.get("title") or "").lower()
-    return any(k in t for k in SEC_TITLE)
+    if any(_kw_hit(k, t) for k in SEC_TITLE):
+        return True
+    jd = (job.get("jd_text") or "").lower()
+    if not jd:
+        return False
+    hits = sum(1 for k in SEC_TITLE if _kw_hit(k, jd))
+    return hits >= JD_SECURITY_MIN_HITS
 
 
 def has_scope_gap(job: dict[str, Any]) -> bool:

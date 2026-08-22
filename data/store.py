@@ -112,13 +112,20 @@ def init_db() -> None:
                 conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {decl}")
 
 
-def upsert_jobs(jobs: Iterable[dict[str, Any]]) -> dict[str, int]:
+def upsert_jobs(jobs: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """Insert new jobs, update existing ones (matched on source+ext_id).
 
-    Each dict should carry at least ``source`` and ``ext_id``. Returns counts
-    {"found", "new", "updated"}. New rows start at status ``scraped``.
+    Each dict should carry at least ``source`` and ``ext_id``. Returns
+    {"found", "new", "updated", "rejected_ids"}. New rows start at status
+    ``scraped``. Existing rows keep their pipeline ``status`` untouched (a
+    re-scrape never resurrects an ``applied``/``rejected`` row on its own) —
+    ``rejected_ids`` lists which of the *updated* rows are currently at
+    status ``rejected``, so a caller (``main.py search --recheck``) can
+    choose to re-queue them for the matcher/classifier instead of leaving
+    them invisible forever.
     """
     found = new = updated = 0
+    rejected_ids: list[int] = []
     with connect() as conn:
         for job in jobs:
             found += 1
@@ -129,7 +136,7 @@ def upsert_jobs(jobs: Iterable[dict[str, Any]]) -> dict[str, int]:
             ext_id = str(ext_id)
 
             row = conn.execute(
-                "SELECT id FROM jobs WHERE source = ? AND ext_id = ?",
+                "SELECT id, status FROM jobs WHERE source = ? AND ext_id = ?",
                 (source, ext_id),
             ).fetchone()
 
@@ -160,7 +167,9 @@ def upsert_jobs(jobs: Iterable[dict[str, Any]]) -> dict[str, int]:
                         params,
                     )
                 updated += 1
-    return {"found": found, "new": new, "updated": updated}
+                if row["status"] == "rejected":
+                    rejected_ids.append(row["id"])
+    return {"found": found, "new": new, "updated": updated, "rejected_ids": rejected_ids}
 
 
 def get_jobs(status: str | None = None, limit: int | None = None,
