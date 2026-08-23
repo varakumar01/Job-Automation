@@ -291,10 +291,14 @@ def _complete_grok(prompt: str, *, system: str, max_tokens: int,
     base = (os.environ.get("XAI_BASE_URL") or "https://api.x.ai/v1").rstrip("/")
     url = f"{base}/chat/completions"
 
-    # If LLM_SYSTEM_PREFIX is set (e.g. "detailed thinking off" for NVIDIA/Nemotron),
-    # prepend it to the system prompt. This disables reasoning-mode on Nemotron models
-    # so the full token budget goes to the actual JSON output, not <think> traces.
-    # The prefix is a no-op for non-reasoning models (Kimi, Mistral, etc.).
+    # If LLM_SYSTEM_PREFIX is set (e.g. "detailed thinking off"), prepend it to the
+    # system prompt. NOTE (research 2026-08-23, see PLAN §9): this string toggle is
+    # NVIDIA's documented mechanism only for `llama-3.3-nemotron-super-49b-v1` /
+    # `llama-3.1-nemotron-ultra-*` — it is NOT documented for `nemotron-3-super-*`
+    # (the model this codebase actually calls) and was found to have no reliable
+    # effect on it. Kept as a harmless legacy nudge (no-op for models that don't
+    # recognize it); the REAL control for nemotron-3-super is the
+    # `chat_template_kwargs.enable_thinking` request field below.
     prefix = (os.environ.get("LLM_SYSTEM_PREFIX") or "").strip()
     effective_system = (f"{prefix}\n{system}".strip() if prefix else system)
 
@@ -302,80 +306,130 @@ def _complete_grok(prompt: str, *, system: str, max_tokens: int,
     if effective_system:
         messages.append({"role": "system", "content": effective_system})
     messages.append({"role": "user", "content": prompt})
-    payload: dict = {"model": model_id or model(), "max_tokens": max_tokens,
-                     "messages": messages}
-    if temperature is not None:
-        payload["temperature"] = temperature
-    body = json.dumps(payload).encode("utf-8")
 
-    raw: str | None = None
-    last_err: Exception | None = None
-    throttled: list[tuple[str, float]] = []
-
-    # Pass 1: try each key ONCE, rotating past a throttled/invalid key immediately.
-    for key in candidates:
+    # Generic escape hatch: any provider-specific top-level request field a skill
+    # never needs to know about (e.g. NVIDIA NIM's `chat_template_kwargs`) gets
+    # merged straight into the JSON body via LLM_EXTRA_BODY (a JSON object string,
+    # set per-provider by main.py's `_llm_env()`). Malformed input is dropped with
+    # a warning rather than failing the whole request — this is a tuning knob, not
+    # a hard dependency.
+    # Reserved: this function computes these itself from its own arguments — a tuning
+    # knob must not be able to silently override the model/budget/prompt it sits
+    # alongside (code-reviewer MAJOR, 2026-08-23).
+    _RESERVED_BODY_KEYS = {"model", "max_tokens", "messages", "temperature"}
+    extra_body: dict = {}
+    extra_body_raw = (os.environ.get("LLM_EXTRA_BODY") or "").strip()
+    if extra_body_raw:
         try:
-            _pace(base)
-            raw = _grok_send(url, body, key)
-            pool.mark(key, "healthy")
-            break
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", "replace")
-            safe = detail.replace(key, key_hint(key))  # never surface the raw key
-            if exc.code == 429:
-                pool.mark(key, "throttled", error=safe[:200])
-                throttled.append((key, _retry_after_secs(exc, detail)))
-                if len(candidates) > 1:
-                    print(f"  ⏳ key {key_hint(key)} rate-limited (429) — rotating to next key…",
-                          file=sys.stderr)
-                continue
-            if exc.code in (401, 403):
-                pool.mark(key, "invalid", error=safe[:200])
-                last_err = RuntimeError(f"xAI API error {exc.code}: {safe}")
-                continue
-            raise RuntimeError(f"xAI API error {exc.code}: {safe}") from exc
-        except urllib.error.URLError as exc:  # pragma: no cover - network-dependent
-            raise RuntimeError(f"xAI API request failed: {exc.reason}") from exc
+            parsed = json.loads(extra_body_raw)
+            if isinstance(parsed, dict):
+                clashes = _RESERVED_BODY_KEYS & parsed.keys()
+                if clashes:
+                    print(f"  ⚠ LLM_EXTRA_BODY may not set {sorted(clashes)} — dropping those "
+                          f"key(s), keeping the rest", file=sys.stderr)
+                    parsed = {k: v for k, v in parsed.items() if k not in _RESERVED_BODY_KEYS}
+                extra_body = parsed
+            else:
+                print(f"  ⚠ LLM_EXTRA_BODY is not a JSON object, ignoring: {extra_body_raw!r}",
+                      file=sys.stderr)
+        except json.JSONDecodeError:
+            print(f"  ⚠ LLM_EXTRA_BODY is not valid JSON, ignoring: {extra_body_raw!r}",
+                  file=sys.stderr)
 
-    # Pass 2: every key was throttled → wait the shortest delay and retry that key.
-    if raw is None and throttled:
-        key, wait = min(throttled, key=lambda kw: kw[1])
-        for attempt in range(MAX_RETRIES_429):
-            print(f"  ⏳ all grok keys throttled; waiting {wait:.0f}s then retrying "
-                  f"{key_hint(key)} ({attempt + 1}/{MAX_RETRIES_429})…", file=sys.stderr)
-            time.sleep(min(wait, MAX_BACKOFF_SECS))
+    # Safety net for reasoning models that still eat the token budget on a hidden
+    # <think> block despite the toggles above: retry ONCE with a much larger budget
+    # if the response comes back truncated (`finish_reason == "length"`), before the
+    # caller's JSON parse ever sees it. Lives here (not a per-skill max_tokens bump)
+    # because it's a completions-API-level signal, not JSON-specific — every
+    # `llm.complete()` caller benefits. Full investigation/repro: PLAN §9 2026-08-23.
+    attempt_tokens = max_tokens
+    content = ""
+    for attempt in range(2):
+        payload: dict = {"model": model_id or model(), "max_tokens": attempt_tokens,
+                         "messages": messages, **extra_body}
+        if temperature is not None:
+            payload["temperature"] = temperature
+        body = json.dumps(payload).encode("utf-8")
+
+        raw: str | None = None
+        last_err: Exception | None = None
+        throttled: list[tuple[str, float]] = []
+
+        # Pass 1: try each key ONCE, rotating past a throttled/invalid key immediately.
+        for key in candidates:
             try:
-                # The Retry-After sleep above (min 5s) already exceeds every
-                # host's pacing interval (max 2s), so this never adds extra
-                # delay here — it only updates _last_request_at's bookkeeping.
                 _pace(base)
                 raw = _grok_send(url, body, key)
                 pool.mark(key, "healthy")
                 break
             except urllib.error.HTTPError as exc:
                 detail = exc.read().decode("utf-8", "replace")
+                safe = detail.replace(key, key_hint(key))  # never surface the raw key
                 if exc.code == 429:
-                    pool.mark(key, "throttled", error=detail.replace(key, key_hint(key))[:200])
-                    wait = _retry_after_secs(exc, detail)
+                    pool.mark(key, "throttled", error=safe[:200])
+                    throttled.append((key, _retry_after_secs(exc, detail)))
+                    if len(candidates) > 1:
+                        print(f"  ⏳ key {key_hint(key)} rate-limited (429) — rotating to next key…",
+                              file=sys.stderr)
                     continue
-                raise RuntimeError(f"xAI API error {exc.code}: "
-                                   f"{detail.replace(key, key_hint(key))}") from exc
-            except urllib.error.URLError as exc:  # pragma: no cover
+                if exc.code in (401, 403):
+                    pool.mark(key, "invalid", error=safe[:200])
+                    last_err = RuntimeError(f"xAI API error {exc.code}: {safe}")
+                    continue
+                raise RuntimeError(f"xAI API error {exc.code}: {safe}") from exc
+            except urllib.error.URLError as exc:  # pragma: no cover - network-dependent
                 raise RuntimeError(f"xAI API request failed: {exc.reason}") from exc
 
-    if raw is None:
-        # If any key was throttled, that's the operational reason (not a stale 401 from an
-        # invalid key) — surface it accurately.
-        if throttled:
-            raise RuntimeError("all grok keys are rate-limited (429) — retries exhausted; "
-                               "wait ~1 min or add another XAI_API_KEY")
-        raise last_err or RuntimeError("all grok keys are invalid/unauthorized")
+        # Pass 2: every key was throttled → wait the shortest delay and retry that key.
+        if raw is None and throttled:
+            key, wait = min(throttled, key=lambda kw: kw[1])
+            for retry in range(MAX_RETRIES_429):
+                print(f"  ⏳ all grok keys throttled; waiting {wait:.0f}s then retrying "
+                      f"{key_hint(key)} ({retry + 1}/{MAX_RETRIES_429})…", file=sys.stderr)
+                time.sleep(min(wait, MAX_BACKOFF_SECS))
+                try:
+                    # The Retry-After sleep above (min 5s) already exceeds every
+                    # host's pacing interval (max 2s), so this never adds extra
+                    # delay here — it only updates _last_request_at's bookkeeping.
+                    _pace(base)
+                    raw = _grok_send(url, body, key)
+                    pool.mark(key, "healthy")
+                    break
+                except urllib.error.HTTPError as exc:
+                    detail = exc.read().decode("utf-8", "replace")
+                    if exc.code == 429:
+                        pool.mark(key, "throttled", error=detail.replace(key, key_hint(key))[:200])
+                        wait = _retry_after_secs(exc, detail)
+                        continue
+                    raise RuntimeError(f"xAI API error {exc.code}: "
+                                       f"{detail.replace(key, key_hint(key))}") from exc
+                except urllib.error.URLError as exc:  # pragma: no cover
+                    raise RuntimeError(f"xAI API request failed: {exc.reason}") from exc
 
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:  # 200 OK but not JSON (proxy/CDN error page)
-        raise RuntimeError(f"xAI returned non-JSON response: {raw[:500]}") from exc
-    try:
-        return data["choices"][0]["message"]["content"] or ""
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError(f"Unexpected xAI response shape: {data!r}") from exc
+        if raw is None:
+            # If any key was throttled, that's the operational reason (not a stale 401 from an
+            # invalid key) — surface it accurately.
+            if throttled:
+                raise RuntimeError("all grok keys are rate-limited (429) — retries exhausted; "
+                                   "wait ~1 min or add another XAI_API_KEY")
+            raise last_err or RuntimeError("all grok keys are invalid/unauthorized")
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:  # 200 OK but not JSON (proxy/CDN error page)
+            raise RuntimeError(f"xAI returned non-JSON response: {raw[:500]}") from exc
+        try:
+            choice = data["choices"][0]
+            content = choice["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError) as exc:
+            raise RuntimeError(f"Unexpected xAI response shape: {data!r}") from exc
+
+        if choice.get("finish_reason") == "length" and attempt == 0:
+            attempt_tokens = min(attempt_tokens * 4, 8192)
+            print(f"  ⏳ response cut off at max_tokens={max_tokens} "
+                  f"(finish_reason=length, likely reasoning-mode overhead) — "
+                  f"retrying once with max_tokens={attempt_tokens}…", file=sys.stderr)
+            continue
+        break
+
+    return content

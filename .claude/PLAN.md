@@ -1872,6 +1872,59 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   transition path; résumé "Save + compile" confirmed above the
   textarea/PDF pair in DOM and screenshot; full-tab regression clean (no
   new console errors, all 3 tiers render distinct correct content).
+- **2026-08-23 — jd-understander / execution/llm.py — NVIDIA reasoning-mode
+  fix.** Owner report: "JD prep, session! it returns errors no value or bad
+  model." Reproduced live: `main.py prep --llm nvidia` failed 6/6 jobs with
+  `bad model output — Expecting value: line 1 column 1 (char 0)` (empty
+  reply) or `Unterminated string starting at: ...` (truncated reply) —
+  the "no value" / "bad model" the owner saw are literally the
+  `json.JSONDecodeError` text inside `understand.py`'s
+  `"bad model output — {exc}"` line. Root cause (confirmed via research
+  against NVIDIA's own docs/model card, not guessed): `nvidia/nemotron-3-
+  super-120b-a12b` was being told to disable reasoning via a system-prompt
+  string (`"detailed thinking off"`) — but that toggle is NVIDIA's
+  documented mechanism for a DIFFERENT model family
+  (`llama-3.3-nemotron-super-49b-v1` / `llama-3.1-nemotron-ultra-*`), not
+  for `nemotron-3-super-*`. Reasoning defaults ON for this model and is
+  actually toggled via the request-body field
+  `chat_template_kwargs: {"enable_thinking": false}` — never sent, so the
+  model burned the whole `max_tokens=1500` budget on a hidden `<think>`
+  block before/instead of the JSON answer. Fix, two parts:
+  1. `execution/llm.py`'s `_complete_grok` (shared by grok/deepseek/nvidia)
+     now merges a new `LLM_EXTRA_BODY` env var (JSON object string) as
+     top-level request fields — provider-specific knobs without `llm.py`
+     needing per-provider awareness. `main.py`'s `_llm_env()` sets it to
+     `{"chat_template_kwargs": {"enable_thinking": false}}` for the
+     `nvidia` provider only (`NVIDIA_EXTRA_BODY`); unset for grok/deepseek,
+     so no leakage across providers.
+  2. Safety net: `_complete_grok` now retries ONCE with
+     `max_tokens = min(max_tokens * 4, 8192)` if the response comes back
+     with `finish_reason == "length"` — a completions-API-level signal
+     (not JSON-specific), so every `llm.complete()` caller benefits, in
+     case `enable_thinking: false` doesn't fully suppress reasoning on
+     some prompt.
+  Live-reverified: the same jobs that failed 6/6 before now succeed
+  cleanly (brief stored, no retry-notice logged — `enable_thinking: false`
+  alone was sufficient). **code-reviewer round — FAIL, 2 MAJOR + 4
+  MINOR/NIT, all fixed same day:**
+  - MAJOR: `LLM_EXTRA_BODY` was only explicitly set for the `nvidia`
+    branch of `_llm_env()` — the `grok`/`deepseek` branches didn't clear
+    it, so a value left in the shell/`.env` from a prior nvidia run would
+    leak NVIDIA-only `chat_template_kwargs` into xAI/DeepSeek requests
+    (same class of bug the existing `GROK_API_KEY: ""` clears already
+    guard against). Fixed: both branches now explicitly set
+    `"LLM_EXTRA_BODY": ""`.
+  - MAJOR: `{"model":…, "max_tokens":…, "messages":…, **extra_body}` let
+    an `LLM_EXTRA_BODY` value silently override the core request fields
+    the function computes itself (env-var-injectable model/budget
+    override). Fixed: reserved keys (`model`, `max_tokens`, `messages`,
+    `temperature`) are stripped from `extra_body` with a stderr warning
+    before the merge.
+  - MINOR/NIT (comment density, retry-loop variable naming, `content=""`
+    init) — comments condensed with a pointer back to this entry; the
+    rest accepted as-is (verdict didn't require them).
+  Re-verified live post-fix: nvidia (3/3 clean, no clobbering) and grok
+  (2/2 clean, incl. one real tailor pass) both still work end-to-end.
 
 ---
 

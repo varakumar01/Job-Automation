@@ -87,11 +87,16 @@ DEEPSEEK_MODEL = "deepseek-chat"
 NVIDIA_BASE = "https://integrate.api.nvidia.com/v1"
 NVIDIA_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 NVIDIA_BACKUP_MODEL = "mistralai/mistral-nemotron"
-# Sent as the FIRST line of the system prompt on the NVIDIA path to disable Nemotron
-# reasoning-mode (which defaults ON and burns the whole token budget on <think> instead of
-# producing JSON). Harmless for non-reasoning models like Kimi/Mistral; protects any
-# Nemotron call. Set LLM_SYSTEM_PREFIX="" in .env to suppress if you switch models.
+# Sent as the FIRST line of the system prompt on the NVIDIA path — a legacy nudge,
+# kept because it's harmless, but NOT the real fix (see NVIDIA_EXTRA_BODY below).
 NVIDIA_SYSTEM_PREFIX = "detailed thinking off"
+# The ACTUAL documented control for `nemotron-3-super-*`: reasoning defaults ON
+# and is toggled via this request-body field, not a system-prompt string (that's
+# NVIDIA's mechanism for a DIFFERENT model family — see PLAN §9 2026-08-23 for the
+# full investigation: sources, the 6/6-jobs-failed repro, and why NVIDIA_SYSTEM_
+# PREFIX above doesn't fix it). Merged into the request via LLM_EXTRA_BODY
+# (execution/llm.py); a finish_reason=="length" retry there is the safety net.
+NVIDIA_EXTRA_BODY = json.dumps({"chat_template_kwargs": {"enable_thinking": False}})
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
@@ -301,7 +306,11 @@ def _llm_env(provider: str) -> dict:
     if provider == "grok":
         return {"LLM_PROVIDER": "grok",
                 "XAI_BASE_URL": os.environ.get("XAI_BASE_URL") or GROQ_BASE,
-                "LLM_MODEL": os.environ.get("LLM_MODEL") or GROQ_MODEL}
+                "LLM_MODEL": os.environ.get("LLM_MODEL") or GROQ_MODEL,
+                # ALWAYS clear (code-reviewer MAJOR, 2026-08-23): a stray LLM_EXTRA_BODY
+                # left in the shell/.env from a previous nvidia run would otherwise leak
+                # NVIDIA-only fields (chat_template_kwargs) into xAI's request body.
+                "LLM_EXTRA_BODY": ""}
     if provider == "deepseek":
         # OpenAI-compatible → reuse the grok backend with DeepSeek's base/model/key.
         # Feed DeepSeek's key into the slot the grok backend reads. ALWAYS set it (to ""
@@ -311,22 +320,27 @@ def _llm_env(provider: str) -> dict:
                "XAI_BASE_URL": os.environ.get("DEEPSEEK_BASE_URL") or DEEPSEEK_BASE,
                "LLM_MODEL": os.environ.get("LLM_MODEL") or DEEPSEEK_MODEL,
                "XAI_API_KEY": os.environ.get("DEEPSEEK_API_KEY") or "",
-               "GROK_API_KEY": ""}  # clear alias so _grok_pool can't discover a stale Groq key
+               "GROK_API_KEY": "",  # clear alias so _grok_pool can't discover a stale Groq key
+               # ALWAYS clear (code-reviewer MAJOR, 2026-08-23) — same cross-provider
+               # leakage risk as GROK_API_KEY above, but for NVIDIA's request-body knob.
+               "LLM_EXTRA_BODY": ""}
         return env
     if provider == "nvidia":
         # OpenAI-compatible NIM endpoint → reuse the grok backend with NVIDIA's base/key/model.
         # ALWAYS set both XAI_API_KEY and GROK_API_KEY explicitly (to "" if missing) so neither
         # Groq key alias can leak to NVIDIA's server via the subprocess env merge.
         # LLM_BACKUP_MODEL is read by execution/llm.py complete() for a one-shot fallback.
-        # LLM_SYSTEM_PREFIX is prepended to every system prompt so Nemotron reasoning-mode
-        # stays OFF (prevents <think> from eating the whole token budget on reasoning models).
+        # LLM_SYSTEM_PREFIX is a harmless legacy nudge (see NVIDIA_SYSTEM_PREFIX above).
+        # LLM_EXTRA_BODY carries the ACTUAL reasoning-mode toggle for nemotron-3-super
+        # (see NVIDIA_EXTRA_BODY above) so <think> doesn't eat the whole token budget.
         return {"LLM_PROVIDER": "grok",
                 "XAI_BASE_URL": os.environ.get("NVIDIA_BASE_URL") or NVIDIA_BASE,
                 "LLM_MODEL": os.environ.get("LLM_MODEL") or NVIDIA_MODEL,
                 "LLM_BACKUP_MODEL": os.environ.get("LLM_BACKUP_MODEL") or NVIDIA_BACKUP_MODEL,
                 "XAI_API_KEY": os.environ.get("NVIDIA_API_KEY") or "",
                 "GROK_API_KEY": "",  # clear alias so _grok_pool can't discover a stale Groq key
-                "LLM_SYSTEM_PREFIX": os.environ.get("LLM_SYSTEM_PREFIX", NVIDIA_SYSTEM_PREFIX)}
+                "LLM_SYSTEM_PREFIX": os.environ.get("LLM_SYSTEM_PREFIX", NVIDIA_SYSTEM_PREFIX),
+                "LLM_EXTRA_BODY": os.environ.get("LLM_EXTRA_BODY") or NVIDIA_EXTRA_BODY}
     if provider == "api":
         return {"LLM_PROVIDER": "api"}
     return {"LLM_PROVIDER": "session"}
