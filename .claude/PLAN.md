@@ -652,6 +652,10 @@ realtime SSE, faster defaults (owner request 2026-08-23)**
   print otherwise), runs `llm_rank.py --save` under the picked provider's env, and
   falls back to a keyword-score notice if every provider is dead. Also wired `--recheck`
   end-to-end (new `SearchRequest.recheck` → scrape.py flag → `SearchPanel.tsx` checkbox).
+  **Superseded 2026-08-23 (same day, later) — see the "Unarranged" §8/§9 entries below:
+  search was split back apart from match/LLM-rerank/auto-reject, which all moved to
+  `arrange`. `_stream_search` no longer does any of the LLM-rerank work described here;
+  `--recheck` is the only part of this note still true.**
 - [x] Streaming hardening in `run_streamed()`: `pump()` now has try/finally so an
   exception (e.g. a line over the size limit) still queues the sentinel instead of
   leaving the SSE stream hung forever with the CMD panel stuck on "running"; raised
@@ -764,6 +768,57 @@ realtime SSE, faster defaults (owner request 2026-08-23)**
   clean; monkeypatched re-run of `cmd_search`'s dead-provider path confirms
   `llm_rank.py` is still correctly skipped after the redundant-line removal.
   Master not touched throughout.
+- [x] **"Unarranged" split — search = scrape only, `arrange` sorts into tiers**
+  (owner request 2026-08-23, same day/branch as the entry above — see §9
+  2026-08-23 "Unarranged section" for the full element-level decision).
+  Undoes the LLM-picker-in-Search entry directly above: `cmd_search`/
+  `_stream_search` now only run `scrape.py` — no `match.py`, no LLM rerank, no
+  `_auto_reject()`. New rows land at `status='scraped'`, surfaced as a first-
+  class **Unarranged** bucket (`main.py lists`'s new 🗂 section; `/api/lists`'s
+  new `unarranged` key, routed around `classify()` since unscored rows have no
+  `match_score` for it to read; `ResultsTiers.tsx`'s new first tab, default
+  landing tab). `cmd_rank`→`cmd_arrange` (CLI: `main.py arrange`, alias `rank`
+  kept for muscle memory/scripts; `/api/rank` unchanged, `post_rank` just now
+  invokes `main.py arrange`) runs `match.py` (scraped→matched, scores
+  everyone) → `_auto_reject()` (off-profile→rejected, moved here from Search
+  so the LLM never scores a job about to be parked) → `llm_rank.py --save`
+  (refines ordering *within* the tier `match.py` already assigned — `llm_rank`
+  never touches `status`/tiers itself). `RankPanel.tsx` retitled "Arrange —
+  sort unarranged jobs into tiers", `save` now defaults `true` (Arrange is the
+  durable sort action, an unsaved run would leave Unarranged un-clearable and
+  Prep's "LLM's best" permanently empty). `--recheck` stays on Search (a
+  `scrape.py` flag re-seeding `rejected`→`scraped`, i.e. back into Unarranged —
+  clean fit, unchanged). Fixed a live bug found during implementation:
+  `JobsList.tsx`'s `canPrep` would have shown a dead "Prep this job" button on
+  Unarranged cards (`cmd_prep` only ever selects from `status='matched'`, even
+  for an explicit `--jobs` id — `main.py:426-427`); excluded `'scraped'` from
+  `canPrep` alongside the existing terminal-status exclusions. Also fixed a
+  stale `schema.sql` comment still listing the retired `ready` status.
+  Verified live against the real DB (not a fixture): `main.py lists` showed
+  the pre-existing 12 scraped rows correctly landing in 🗂 UNARRANGED before
+  any code ran; `main.py arrange --jobs <those 12> --save` matched all 12,
+  auto-rejected 10 off-profile, LLM-reranked the remaining 2 and saved
+  scores (`scraped: 0` after); two `main.py search --source arbeitnow ...`
+  runs confirmed new rows land at `scraped` with zero match/reject/LLM side
+  effects and the second run is a no-op duplicate-free upsert
+  (`UNIQUE(source, ext_id)`); `curl /api/lists` returned the new `unarranged`
+  key with a live count; `openapi.json` confirms `SearchRequest` no longer has
+  an `llm` field; `tsc -b` and `npm run lint` both clean (baseline warnings
+  only). **code-reviewer: PASS**, 2 MINOR fixed (`cmd_rejected`'s empty-state
+  hint said "Run `main.py reject` (or `search`)" — `search` no longer
+  auto-rejects, changed to "(or `arrange`)"; `prep --llm-best`'s help string
+  said "needs rank --save first" — changed to "needs arrange --save first")
+  + 1 NIT left as-is (reviewer flagged it optional: `jobView.ts`'s
+  `STATUS_PRIORITY` map has no explicit `scraped` entry, but its `?? 5`
+  fallback already produces the correct/intended ordering). **code-tester:
+  16/16 PASS**, zero defects — re-verified live against the real DB: scrape-
+  only search, idempotent re-scrape, `arrange`/`rank` alias byte-identical
+  `--help` + identical runtime dispatch, match→auto-reject→LLM-rerank
+  sequence with `--save` writing `llm_score`, `prep --jobs <unarranged id>`
+  correctly no-ops via `_pending_jobs()`'s `status="matched"` filter in both
+  `understand.py`/`tailor.py` (row left untouched), `/api/lists` +
+  `/openapi.json` correct, `tsc -b`/lint clean, `apply`/`log` code paths
+  untouched. Master not touched; branch `ui-ux-audit-fixes`.
 
 ---
 
@@ -2030,6 +2085,8 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   picker, pinned to `auto`, no `autoSelectPicked` (the choice resolves server-side
   at run time so it can't go stale between page load and clicking Run — unlike
   Rank, which does default to the live-picked provider since its run is immediate).
+  **Superseded 2026-08-23 — see the "Unarranged" entry below: search is scrape-only
+  again, this `--llm`/`--recheck-providers` surface was removed the same day.**
 
 - 2026-08-23 — prep UI/CLI — `--llm` default + job-selection default — owner: "for
   JD prep: use the same logic as llm based on whats available and healthy … Needs
@@ -2062,6 +2119,54 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   [revises the original prep default established at initial build, §5/§7, AND
   the 2026-08-23 "LLM dropdown driven by live health" entry above, which had
   made Prep's `claude` default explicitly immune to health-based switching]
+
+- 2026-08-23 — search + rank UI/CLI — "Unarranged" split — owner (verbatim):
+  "Lets rearrange! Firstly lets have a section called unrranged! So whatever i
+  search i get directly get it from unarraned! and when i run LLM ranker
+  section, everything from unarranged section gets sorted into the sections we
+  have now! ... so whatever changes you made to add llm ranker to the search
+  section! just remove as we have llm ranker section separately anyway."
+  Clarified in follow-up: Unarranged = raw scrape, unscored (owner's "option
+  1"); auto-reject's *behavior* is unchanged, only *when* it runs moves (owner
+  didn't know what auto-reject was — explained: it moves off-profile hard-nos
+  from `matched`→`rejected` so the LLM never scores them; owner then confirmed
+  relocating it into arrange, not changing what it does); the Rank panel is
+  renamed **"Arrange"** (owner: "Rename to Arrange").
+  **Decision:** `search` becomes scrape-only — new/re-seen rows land at
+  `status='scraped'` ("Unarranged"), completely unscored, no `match.py`, no
+  `llm_rank.py`, no `_auto_reject()`. `cmd_rank`/`/api/rank`'s backing command
+  renamed `arrange` (CLI alias `rank` kept) and becomes the single sort
+  action, always in this order: (1) `match.py` — scraped→matched, cheap,
+  scores the whole backlog, is what actually assigns eligible/needs_mod/
+  stretch (`execution/eligibility.py::classify()` never reads `llm_score`,
+  only `match_score`/coverage/title/jd_text — so the LLM cannot be the thing
+  that sorts jobs into tiers, only `match.py` can); (2) `_auto_reject()` —
+  moved here from Search, runs before the LLM step per its own stated
+  rationale ("so the LLM never ranks/preps them"); (3) `llm_rank.py --save`
+  (`--llm auto|nvidia|grok|deepseek|api`, unchanged from `726db6e`) — refines
+  ordering *within* whichever tier `match.py` already assigned; if every
+  provider is dead, steps 1–2 (the sort) still ran, only the refinement is
+  skipped, falling back to `match.py --show`'s ordering. `--recheck` stays on
+  `search` (a `scrape.py` flag re-seeding `rejected`→`scraped`, i.e. back into
+  Unarranged — unrelated to the LLM picker, clean fit as-is).
+  Frontend: `/api/lists` gained an `unarranged` key built directly from
+  `status='scraped'` rows, bypassing `classify()` (which would otherwise
+  label every unscored row `off_profile` — it has nothing else to read for
+  them); `ResultsTiers.tsx`'s `TIERS` gained `unarranged` as tab index 0 and
+  the default landing tab; `RankPanel.tsx` retitled "Arrange — sort unarranged
+  jobs into tiers", `save` now defaults `true` (Arrange is the durable sort
+  action now — an unsaved run leaves Unarranged permanently full and Prep's
+  "LLM's best" selection permanently empty); `SearchPanel.tsx` lost its
+  `LlmSelect`/`llm` state/payload field entirely.
+  **This supersedes two same-day entries added earlier by `726db6e`:** the
+  "search UI/CLI — `--llm`" entry above (that whole surface — `--llm`,
+  `--recheck-providers`, `SearchRequest.llm`, `SearchPanel.tsx`'s dropdown —
+  was removed the same day it was added) and the §8 "`_stream_search` brought
+  to full parity with `main.cmd_search`" note (search no longer matches/
+  reranks/auto-rejects; only its `--recheck` wiring, described in that same
+  note, is still accurate). [revises §1 pipeline diagram (`scrape → store →
+  match/prioritize → ...`, now split into two distinct user-facing actions),
+  and the two §8/§9 entries named above]
 
 ---
 

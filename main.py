@@ -10,16 +10,23 @@ take `--`. The full reference (every command + its flags + examples) lives in th
 argparse help — run `python3 main.py -h` (it is the single source of truth, so it
 is not duplicated here). Pipeline order:
 
-    search → lists → prep → apply → log → report
+    search → lists → [arrange] → prep → apply → log → report
+
+`search` only scrapes — new jobs land at 'scraped' ("Unarranged"), unscored.
+`arrange` (alias: `rank`) is what sorts Unarranged into eligible/needs_mod/stretch:
+it runs the deterministic keyword matcher first (scraped → matched, cheap, scores
+everything), auto-rejects off-profile hard-nos, then LLM-reranks a shortlist by
+résumé fit. 2026-08-23: `search` used to also match/rerank/auto-reject in one shot;
+split out so there's a visible "just found, not yet judged" state (PLAN §9).
 
 Job selection (so you can target just the best matches): `prep --eligible` /
 `prep --jobs "1,2"`, and `apply --query <text>` / `apply --jobs "1,2"` /
 `apply --source <portal>`.
 
-LLM choice (`prep --llm`, `rank --llm`, `search --llm`): auto (default) tries
-nvidia → grok → deepseek → api and uses whichever actually answers right now;
-`prep` additionally accepts claude = this Claude Code session (free, manual,
-no automation). Full provider/default detail lives in `-h`, not here.
+LLM choice (`prep --llm`, `arrange --llm`): auto (default) tries nvidia → grok →
+deepseek → api and uses whichever actually answers right now; `prep` additionally
+accepts claude = this Claude Code session (free, manual, no automation). Full
+provider/default detail lives in `-h`, not here.
 """
 
 from __future__ import annotations
@@ -145,39 +152,13 @@ def cmd_search(args) -> int:
     if getattr(args, "recheck", False):
         scrape_args.append("--recheck")
     rc = _run(SCRAPE, *scrape_args, env=env)
-    # Rank everything just scraped (only NEW rows advance scraped→matched — resumable/
-    # incremental: already-applied/ready/rejected jobs are untouched on a re-search).
-    match_rc = _run(MATCH)
-    if match_rc != 0:
-        print(f"\n⚠ profile-matcher exited {match_rc} — scores/coverage above may be "
-              f"stale or incomplete (see its output above for why).", file=sys.stderr)
-        rc = rc or match_rc
-    # LLM-rerank the freshly matched jobs. `--llm auto` (default) tries whichever
-    # provider is actually working right now (nvidia → grok → deepseek → api);
-    # `--llm <provider>` forces one, skipping the probe entirely. `_ordered()`
-    # already prefers llm_score over match_score, so lists sort by real fit the
-    # moment this succeeds; if every provider is currently dead (auto path only),
-    # fall back to the keyword score with a clear reason instead of a silent no-op.
-    llm_arg = getattr(args, "llm", "auto")
-    if llm_arg == "auto":
-        provider, probe_results = _pick_llm_provider(
-            force_recheck=getattr(args, "recheck_providers", False))
-        if provider is None:
-            reasons = "; ".join(f"{p}: {r['detail']}" for p, r in probe_results.items())
-            print(f"\n⚠ no working LLM provider ({reasons}) — ordering by keyword match_score "
-                  f"instead. Run `main.py keys --llm` for details.", file=sys.stderr)
-        else:
-            print(f"\nLLM rerank via {provider} (auto-picked)...")
-    else:
-        provider = llm_arg
-        print(f"\nLLM rerank via {provider} (forced)...")
-    if provider:
-        _run(LLM_RANK, "--save", env=_llm_env(provider))
-    # Park off-profile jobs so the LLM ranker/prep only ever touches relevant ones.
-    rejected = _auto_reject()
-    if rejected:
-        print(f"\n🚫 auto-rejected {rejected} off-profile job(s) → rejected list "
-              f"(see `main.py rejected`).")
+    # 2026-08-23 (PLAN §9): search is scrape-ONLY now — new/re-seen rows land at
+    # 'scraped' ("Unarranged") unscored. Matching, auto-reject, and LLM rerank all
+    # moved to `arrange` (alias `rank`), which is the single action that sorts
+    # Unarranged into eligible/needs_mod/stretch. Run `main.py arrange` next.
+    unarranged = len(store.get_jobs(status="scraped"))
+    print(f"\n{unarranged} job(s) awaiting arrangement — run `main.py arrange` to sort "
+          f"them into eligible/needs_mod/stretch.")
     print("\n" + "=" * 60)
     _print_lists()
     return rc
@@ -216,7 +197,7 @@ def _reject_by_llm(threshold: float = eligibility.LLM_BEST_SCORE) -> int:
 
 def cmd_reject(args) -> int:
     """Reject off-profile matched jobs → the 'rejected' list. With --by-llm, instead
-    reject the jobs the Grok reranker scored below the best-cutoff (needs `rank --save`)."""
+    reject the jobs the Grok reranker scored below the best-cutoff (needs `arrange --save`)."""
     if args.by_llm:
         n = _reject_by_llm()
         counts = store.stats()
@@ -225,7 +206,7 @@ def cmd_reject(args) -> int:
               f"{counts.get('rejected', 0)} rejected total.)")
         if n == 0:
             print("  (nothing rejected — jobs may lack an llm_score; run "
-                  "`main.py rank --llm grok --eligible --save` first.)")
+                  "`main.py arrange --llm grok --eligible --save` first.)")
         return 0
     n = _auto_reject()
     counts = store.stats()
@@ -239,7 +220,7 @@ def cmd_rejected(args) -> int:
     """Show the rejected (non-relevant) list — excluded from ranking/prep."""
     rows = store.get_jobs(status="rejected")
     if not rows:
-        print("No rejected jobs yet. Run `main.py reject` (or `search`) to park off-profile jobs.")
+        print("No rejected jobs yet. Run `main.py reject` (or `arrange`) to park off-profile jobs.")
         return 0
     print(f"🚫 REJECTED — non-relevant jobs ({len(rows)}); excluded from ranking/prep:\n")
     for j in _ordered(rows):
@@ -249,6 +230,13 @@ def cmd_rejected(args) -> int:
 
 
 def _print_lists(raw: bool = False) -> None:
+    # Unarranged = scraped, not yet matched/scored — `main.py arrange` sorts these
+    # into the tiers below (2026-08-23, PLAN §9: search no longer matches inline).
+    unarranged = store.get_jobs(status="scraped")
+    print(f"\n🗂  UNARRANGED — scraped, not yet sorted ({len(unarranged)})")
+    if unarranged:
+        print("   Run `main.py arrange` to sort these into eligible/needs_mod/stretch.")
+
     jobs = store.get_jobs(status="matched")
     # classify() runs has_scope_gap() (regex) + coverage() (JSON parse) per job —
     # compute once and bucket to avoid 4× redundant work across the list comprehensions.
@@ -270,18 +258,20 @@ def _print_lists(raw: bool = False) -> None:
                 f"| {(j.get('location') or '')[:18]}\n"
                 f"           ↳ {link}")
 
-    # LIST 1 — the raw scraped pool (everything sourced & still unactioned). Summarized
-    # by portal so 300+ rows don't flood the terminal; `--raw` dumps the full list.
+    # LIST 1 — the arranged pool (matched & sorted, still unactioned). Summarized by
+    # portal so 300+ rows don't flood the terminal; `--raw` dumps the full list.
+    # Named "MATCHED" (not "scraped") to avoid clashing with the 'scraped' status,
+    # which is now the separate Unarranged bucket printed above.
     by_src: dict[str, int] = {}
     for j in jobs:
         by_src[j.get("source") or "?"] = by_src.get(j.get("source") or "?", 0) + 1
     src_summary = ", ".join(f"{k} {v}" for k, v in sorted(by_src.items()))
-    print(f"\n📥 SCRAPED — all sourced jobs ({len(jobs)}) [{src_summary or 'none'}]")
+    print(f"\n📊 MATCHED — arranged & sorted ({len(jobs)}) [{src_summary or 'none'}]")
     if raw:
         for j in _ordered(jobs):
             print(_row(j) + f"  <{classify(j)}>")
     else:
-        print("   (full list: `main.py lists --raw`  or  `main.py rank`)")
+        print("   (full list: `main.py lists --raw`  or  `main.py arrange`)")
 
     # LIST 2 — best matches (apply with the master résumé as-is).
     print(f"\n✅ BEST MATCH — eligible as-is, apply with the master résumé ({len(eligible)}):")
@@ -316,8 +306,8 @@ def _llm_env(provider: str) -> dict:
     if provider == "auto":
         # Callers must resolve "auto" to a concrete provider via _pick_llm_provider()
         # BEFORE calling _llm_env — the catch-all below would otherwise silently hand
-        # back session mode for an unresolved "auto" instead of erroring (see cmd_rank/
-        # cmd_search/cmd_prep for the resolve-then-call pattern).
+        # back session mode for an unresolved "auto" instead of erroring (see
+        # cmd_arrange/cmd_prep for the resolve-then-call pattern).
         raise ValueError("_llm_env('auto') — resolve via _pick_llm_provider() first")
     if provider == "grok":
         return {"LLM_PROVIDER": "grok",
@@ -409,12 +399,12 @@ def cmd_prep(args) -> int:
     # pending. `ids` (or None for all) threads through all stages.
     ids = store.parse_ids(args.jobs)
     if ids is None and args.llm_best:
-        # Grok/LLM reranker decides the best (not the keyword score) — needs `rank
+        # Grok/LLM reranker decides the best (not the keyword score) — needs `arrange
         # --llm grok --eligible --save` first so jobs carry an llm_score.
         ids = [j["id"] for j in store.get_jobs(status="matched") if eligibility.llm_best(j)]
         if not ids:
             print("no Grok-scored best jobs at 'matched'. Run "
-                  "`main.py rank --llm grok --eligible --save` first, then retry --llm-best.")
+                  "`main.py arrange --llm grok --eligible --save` first, then retry --llm-best.")
             return 0
     wanted = {c for c, on in (("eligible", args.eligible),
                               ("needs_mod", args.needs_mod),
@@ -625,9 +615,9 @@ def cmd_keys(args) -> int:
                   "✗ invalid.  Multiple keys rotate automatically on a 429.")
 
         # LLM provider health (nvidia/grok/deepseek/api) — last-known state from
-        # the cache written by `main.py rank --llm auto` / `search`; does NOT
-        # probe live (use `rank --llm auto --recheck-providers` for that).
-        print("\nLLM provider health (last known — `search`/`rank --llm auto` probe live):\n")
+        # the cache written by `main.py arrange --llm auto`; does NOT probe live
+        # (use `arrange --llm auto --recheck-providers` for that).
+        print("\nLLM provider health (last known — `arrange --llm auto` probe live):\n")
         for row in llm_health.status_table():
             glyph = "✓" if row["ok"] else ("✗" if row["ok"] is False else "?")
             # Some provider error strings embed a raw newline (seen from the
@@ -697,19 +687,37 @@ def cmd_stats(args) -> int:
     return 0
 
 
-def cmd_rank(args) -> int:
-    """LLM-reranks a shortlist by résumé fit (judging the JD duties, not the title).
-    `--llm auto` (default) tries nvidia -> grok -> deepseek -> api and uses whichever
-    actually answers right now; `--llm nvidia|grok|deepseek|api` forces one. If every
-    provider is currently dead, falls back to the deterministic keyword matcher
-    (`match.py --show`) instead of failing outright."""
+def cmd_arrange(args) -> int:
+    """Sorts Unarranged (scraped) jobs into eligible/needs_mod/stretch, then LLM-reranks
+    a shortlist by résumé fit (judging the JD duties, not the title). Alias: `rank`.
+
+    Three steps, always in this order: (1) the deterministic keyword matcher scores
+    every scraped job and advances it scraped→matched — cheap, always runs, handles
+    the whole backlog; (2) off-profile hard-nos are auto-rejected so the LLM never
+    spends tokens scoring them; (3) `--llm auto` (default) tries nvidia -> grok ->
+    deepseek -> api and uses whichever actually answers right now, or `--llm
+    nvidia|grok|deepseek|api` forces one, to refine a shortlist's ordering within its
+    tier. If every provider is currently dead, steps 1-2 (the sort) already happened —
+    only the LLM refinement is skipped, falling back to the keyword matcher's own
+    ordering (`match.py --show`)."""
+    match_rc = _run(MATCH)
+    if match_rc != 0:
+        print(f"⚠ profile-matcher exited {match_rc} — scores/coverage above may be "
+              f"stale or incomplete (see its output above for why).", file=sys.stderr)
+    # Park off-profile jobs BEFORE the LLM step so it never scores jobs about to be
+    # rejected (moved here from `search` 2026-08-23 — PLAN §9).
+    rejected = _auto_reject()
+    if rejected:
+        print(f"🚫 auto-rejected {rejected} off-profile job(s) → rejected list "
+              f"(see `main.py rejected`).")
     provider = args.llm
     if provider == "auto":
         provider, probe_results = _pick_llm_provider(force_recheck=args.recheck_providers)
         if provider is None:
             reasons = "; ".join(f"{p}: {r['detail']}" for p, r in probe_results.items())
-            print(f"⚠ no working LLM provider ({reasons}) — showing the keyword-matcher "
-                  f"ranking instead. Run `main.py keys --llm` for details.", file=sys.stderr)
+            print(f"⚠ no working LLM provider ({reasons}) — jobs are already sorted by "
+                  f"keyword match_score; showing that ranking instead. Run `main.py keys "
+                  f"--llm` for details.", file=sys.stderr)
             return _run(MATCH, "--show")
         print(f"(auto-picked provider: {provider})")
     env = _llm_env(provider)
@@ -729,10 +737,11 @@ main.py — one terminal entrypoint for the AI job-search pipeline.
 Commands work bare or as flags:  main.py search  ==  main.py --search
 Pipeline runs left to right:
 
-    search → lists → [rank] → prep → apply → log → report
+    search → lists → [arrange] → prep → apply → log → report
 
 ━━━ SCRAPE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  search        Scrape portals, score every result, auto-reject hard-nos.
+  search        Scrape portals only. New/re-seen jobs land at 'scraped'
+                (Unarranged), unscored — run `arrange` afterwards to sort them.
                 Ends with a SOURCE REPORT: every discovered plugin, whether it
                 ran, what it found, and why an unavailable one was skipped.
     --queries   Comma-separated role keywords  (e.g. "detection eng,appsec")
@@ -745,39 +754,39 @@ Pipeline runs left to right:
     --workers N Plugins fetched in parallel (a plugin's own query×location
                   combos still run one at a time)  (default 0 = auto, one
                   worker per available plugin)
-    --llm       LLM used for the post-scrape rerank step. auto (default) tries
-                  nvidia→grok→deepseek→api and uses whichever actually answers right
-                  now; or force one: nvidia | grok | deepseek | api. Falls back to
-                  the keyword matcher if every provider is dead (auto only).
-    --recheck-providers  with --llm auto, ignore the 10-min provider-health cache,
-                  re-probe now
-    --recheck   Re-seen jobs currently 'rejected' go back to 'scraped' for
-                  re-evaluation instead of staying invisible forever (off by default)
+    --recheck   Re-seen jobs currently 'rejected' go back to 'scraped'
+                  (Unarranged) for re-evaluation instead of staying invisible
+                  forever (off by default)
                 Note: plugins that ignore location (most of them) run each query
                   ONCE, not once per location; jobs already saved persist per-plugin
                   as the run goes, so Ctrl-C only loses whatever plugin was still
                   in flight, not the whole run.
 
 ━━━ TRIAGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  lists         Show the four classified tiers, best-score-first in each.
-    --raw       Also dump every job row with its classification tag
+  lists         Show Unarranged + the four classified tiers, best-score-first
+                in each.
+    --raw       Also dump every matched job row with its classification tag
 
   stats         Pipeline funnel — count of jobs at each status.
 
-  rank          LLM rerank matched jobs by résumé fit (supplements keyword score).
+  arrange       Sorts Unarranged (scraped) jobs into eligible/needs_mod/stretch,
+                then LLM-reranks a shortlist by résumé fit. Alias: `rank`.
+                Always runs the keyword matcher + auto-reject first (cheap,
+                covers the whole backlog); the LLM step only refines ordering
+                within a tier and is skipped if every provider is dead.
     --llm       auto (default) tries nvidia→grok→deepseek→api and uses whichever
                   actually answers right now; or force one: nvidia | grok | deepseek | api.
-                  Falls back to the keyword matcher if every provider is dead.
+                  Falls back to the keyword matcher's own ordering if every provider is dead.
     --recheck-providers  ignore the 10-min provider-health cache, re-probe now
-    --limit N   Shortlist size to rerank  (default 20)
-    --eligible  Rank only eligible best-match jobs
-    --jobs "…"  Rank only these comma-separated job ids
+    --limit N   Shortlist size for the LLM refinement step  (default 20)
+    --eligible  Refine only eligible best-match jobs
+    --jobs "…"  Refine only these comma-separated job ids
     --save      Persist llm_score + llm_reason to the store
 
   reject        Park hard-nos in 'rejected' so they never re-appear in lists/prep.
-                (search does this automatically; re-run after score tweaks.)
+                (arrange does this automatically; re-run after score tweaks.)
     --by-llm    Reject jobs the LLM reranker scored below the cutoff instead
-                (needs `rank --save` first)
+                (needs `arrange --save` first)
 
   rejected      Show the rejected list — excluded from all ranking and prep.
 
@@ -802,7 +811,7 @@ Pipeline runs left to right:
     --needs-mod     ✏️  Jobs that need résumé tailoring (modified copy, master untouched)
     --stretch       🧗 Stretch jobs — low-fit security roles needing a heavy rewrite;
                        you opt in and review each PDF before applying
-    --llm-best      LLM reranker's top picks (needs `rank --save` first)
+    --llm-best      LLM reranker's top picks (needs `arrange --save` first)
     --jobs "1,2,3"  Specific job ids
 
     OTHER:
@@ -855,8 +864,8 @@ examples:
   main.py lists
   main.py lists --raw
 
-  # LLM rank, then prep by tier
-  main.py rank --llm nvidia --eligible --save
+  # Arrange (sort + LLM rank), then prep by tier
+  main.py arrange --llm nvidia --eligible --save
   main.py prep --llm-best --llm nvidia          # LLM's top picks
   main.py prep --eligible  --llm nvidia          # keyword-eligible, no tailoring
   main.py prep --needs-mod --llm nvidia          # tailor résumés
@@ -879,7 +888,8 @@ examples:
 
 
 COMMANDS = ("search", "lists", "prep", "apply", "log", "applied", "report",
-            "reject", "rejected", "keys", "sources", "stats", "rank", "reset", "serve")
+            "reject", "rejected", "keys", "sources", "stats", "arrange", "rank",
+            "reset", "serve")
 
 
 def _normalize_argv(argv: list[str]) -> list[str]:
@@ -941,7 +951,7 @@ def main(argv=None) -> int:
     p.add_argument("--reload", action="store_true", help="auto-reload on code changes (dev only)")
     p.set_defaults(func=cmd_serve)
 
-    p = sub.add_parser("rank")
+    p = sub.add_parser("arrange", aliases=["rank"])
     p.add_argument("--llm", choices=["auto", "grok", "deepseek", "nvidia", "api"], default="auto",
                    help="auto (default) = try nvidia→grok→deepseek→api, use whichever "
                         "actually answers right now; or force one provider. Falls back to "
@@ -953,12 +963,13 @@ def main(argv=None) -> int:
     p.add_argument("--eligible", action="store_true", help="only eligible best-match jobs")
     p.add_argument("--jobs", default=None, help="comma-separated job ids")
     p.add_argument("--save", action="store_true", help="persist llm_score/llm_reason")
-    p.set_defaults(func=cmd_rank)
+    p.set_defaults(func=cmd_arrange)
 
     p = sub.add_parser(
-        "search", help="Scrape portals, score every result, auto-reject hard-nos.",
-        description="Scrape portals, score every result, auto-reject hard-nos. "
-                    "Prints a SOURCE REPORT covering every discovered plugin.")
+        "search", help="Scrape portals into Unarranged. Run `arrange` next to sort them.",
+        description="Scrape portals — new/re-seen jobs land at 'scraped' (Unarranged), "
+                    "unscored. Prints a SOURCE REPORT covering every discovered plugin. "
+                    "Run `main.py arrange` afterwards to sort into tiers.")
     p.add_argument("--locations", default="Hyderabad,Bengaluru,India",
                    help="comma-separated cities, e.g. 'Bangalore,Remote' (default: %(default)s)")
     p.add_argument("--queries", default="security engineer,detection engineer,vulnerability",
@@ -975,17 +986,9 @@ def main(argv=None) -> int:
                    help="max plugins fetched in parallel; 0 (default) = auto, one worker per "
                         "available plugin. A single plugin's own combos still run sequentially")
     p.add_argument("--recheck", action="store_true",
-                   help="re-seen jobs currently at 'rejected' are moved back to 'scraped' so "
-                        "the matcher/classifier re-evaluate them (e.g. after an eligibility "
-                        "rule change). Off by default.")
-    p.add_argument("--llm", choices=["auto", "grok", "deepseek", "nvidia", "api"], default="auto",
-                   help="LLM used for the post-scrape rerank step. auto (default) tries "
-                        "nvidia→grok→deepseek→api and uses whichever actually answers right "
-                        "now; or force one provider. Falls back to the keyword matcher if "
-                        "every provider is dead (auto only).")
-    p.add_argument("--recheck-providers", action="store_true",
-                   help="with --llm auto, ignore the cached provider health and re-probe "
-                        "every candidate now (default: reuse a probe result up to 10 min old)")
+                   help="re-seen jobs currently at 'rejected' are moved back to 'scraped' "
+                        "(Unarranged) so `arrange` re-evaluates them (e.g. after an "
+                        "eligibility rule change). Off by default.")
     p.set_defaults(func=cmd_search)
 
     p = sub.add_parser("lists")
@@ -1015,7 +1018,7 @@ def main(argv=None) -> int:
     p.add_argument("--eligible", action="store_true",
                    help="only eligible best-match jobs (keyword score)")
     p.add_argument("--llm-best", action="store_true",
-                   help="only jobs the Grok reranker scored best (needs rank --save first)")
+                   help="only jobs the Grok reranker scored best (needs arrange --save first)")
     p.add_argument("--needs-mod", action="store_true",
                    help="only non-best jobs that need résumé tailoring")
     p.add_argument("--stretch", action="store_true",

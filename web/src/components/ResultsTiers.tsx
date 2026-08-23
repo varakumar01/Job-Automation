@@ -10,13 +10,16 @@ import type { JobLists } from '@/lib/api'
 
 // Plain labels, not emoji (finding 12) — the count is the useful part, and
 // emoji render inconsistently per-OS on a page that's meant to be shared.
+// 'unarranged' sits first (2026-08-23, PLAN §9) — search results land here,
+// unscored, until Arrange sorts them into the tiers that follow.
 const TIERS: Array<{ value: keyof JobLists; label: string }> = [
+  { value: 'unarranged', label: 'Unarranged' },
   { value: 'eligible', label: 'Eligible' },
   { value: 'needs_mod', label: 'Needs mod' },
   { value: 'stretch', label: 'Stretch' },
 ]
 
-const EMPTY_LISTS: JobLists = { eligible: [], needs_mod: [], stretch: [], off_profile: [] }
+const EMPTY_LISTS: JobLists = { unarranged: [], eligible: [], needs_mod: [], stretch: [], off_profile: [] }
 
 export const ResultsTiers = memo(function ResultsTiers({
   lists,
@@ -32,7 +35,7 @@ export const ResultsTiers = memo(function ResultsTiers({
   onPrepJob?: (jobId: number) => void
   running?: boolean
 }) {
-  const [tab, setTab] = useState<keyof JobLists>('eligible')
+  const [tab, setTab] = useState<keyof JobLists>('unarranged')
   // A first-time switch into the 342-card "Needs mod" tier measured
   // 300-445ms live (code-tester, 2026-08-23) — borderline against the
   // ~400ms target with no in-between visual acknowledgment. `useTransition`
@@ -59,7 +62,7 @@ export const ResultsTiers = memo(function ResultsTiers({
   const safeLists = lists ?? EMPTY_LISTS
 
   const sources = useMemo(() => {
-    const all = [...safeLists.eligible, ...safeLists.needs_mod, ...safeLists.stretch]
+    const all = [...safeLists.unarranged, ...safeLists.eligible, ...safeLists.needs_mod, ...safeLists.stretch]
     return Array.from(new Set(all.map((j) => j.source))).sort()
   }, [safeLists])
 

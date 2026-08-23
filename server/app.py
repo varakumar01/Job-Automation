@@ -113,13 +113,24 @@ _POST_MATCH_STATUSES = ("matched", "tailored", "applied", "skipped", "failed")
 
 @app.get("/api/lists")
 def get_lists() -> dict:
-    """Jobs bucketed into the same four eligibility tiers `main.py lists` shows,
-    across every post-match status — lets the frontend inform a prep
+    """Jobs bucketed into Unarranged + the same four eligibility tiers `main.py
+    lists` shows, across every post-match status — lets the frontend inform a prep
     job-selection choice with real counts/rows, and keeps showing each job's
     pipeline progress (tailored/applied/...) instead of dropping it once
-    prep advances it off 'matched'."""
+    prep advances it off 'matched'.
+
+    Unarranged = 'scraped' — search results not yet run through `arrange`
+    (2026-08-23, PLAN §9: search no longer matches/rejects/LLM-ranks inline).
+    These have no match_score, so they're routed in directly rather than through
+    classify(), which would otherwise label every one of them 'off_profile' (it
+    reads match_score/coverage — see execution/eligibility.py:141-179). Newest
+    first, since nothing has scored them yet to sort by.
+    """
+    unarranged = list(reversed(store.get_jobs(status="scraped", order="id")))
     jobs = [j for j in store.get_jobs(order="score") if j["status"] in _POST_MATCH_STATUSES]
-    tiers: dict[str, list[dict]] = {"eligible": [], "needs_mod": [], "stretch": [], "off_profile": []}
+    tiers: dict[str, list[dict]] = {
+        "unarranged": unarranged, "eligible": [], "needs_mod": [], "stretch": [], "off_profile": [],
+    }
     for j in jobs:
         tiers.setdefault(classify(j), []).append(j)
     return tiers
@@ -232,8 +243,9 @@ def _locked_sse(gen_factory):
 
 
 # ── search (SSE) ─────────────────────────────────────────────────────────────
-
-_SEARCH_LLM_CHOICES = ("auto", "grok", "deepseek", "nvidia", "api")
+# 2026-08-23 (PLAN §9): search is scrape-ONLY now — no match/LLM-rerank/auto-reject.
+# New/re-seen rows land at 'scraped' ("Unarranged"); `arrange` (below) sorts them.
+# The `llm`/`--recheck-providers` choice that used to live here moved to Arrange.
 
 
 class SearchRequest(BaseModel):
@@ -244,13 +256,12 @@ class SearchRequest(BaseModel):
     limit: int = 30
     workers: int = 0  # 0 = auto: one worker per available plugin (see scrape.py)
     recheck: bool = False
-    llm: str = "auto"  # LLM for the post-scrape rerank step; forcing one skips the probe.
 
 
 async def _stream_search(req: SearchRequest):
-    """Run scrape.py -> match.py -> LLM rerank (auto-picked or forced provider) ->
-    auto-reject — full parity with `main.cmd_search`, streamed instead of inheriting
-    the terminal directly."""
+    """Run scrape.py — full parity with `main.cmd_search`, streamed instead of
+    inheriting the terminal directly. Results land at 'scraped' (Unarranged);
+    `arrange` is a separate action that sorts them into tiers."""
     env = {"LINKEDIN_POSTED_DAYS": str(req.days)} if req.days else {}
 
     scrape_args = ["--source", req.source, "--queries", req.queries,
@@ -262,41 +273,16 @@ async def _stream_search(req: SearchRequest):
     yield {"event": "line", "data": f"$ scrape.py {' '.join(scrape_args)}"}
     async for evt in run_streamed(cli.SCRAPE, *scrape_args, env=env):
         yield evt
-    yield {"event": "line", "data": "\n$ match.py"}
-    async for evt in run_streamed(cli.MATCH):
-        yield evt
 
-    if req.llm == "auto":
-        # cli._pick_llm_provider() does blocking urllib network I/O (one probe per
-        # candidate provider) — run it off the event loop so SSE keeps flowing for
-        # any other client, and emit a heartbeat first since a probe against a dead
-        # provider can take several seconds with nothing to print in the meantime.
-        yield {"event": "line", "data": "\nprobing LLM providers (nvidia → grok → deepseek → api)…"}
-        provider, probe_results = await asyncio.to_thread(cli._pick_llm_provider)
-        if provider is None:
-            reasons = "; ".join(f"{p}: {r['detail']}" for p, r in probe_results.items())
-            yield {"event": "line", "data": f"\n⚠ no working LLM provider ({reasons}) — ordering "
-                                             f"by keyword match_score instead."}
-    else:
-        provider = req.llm
-
-    if provider:
-        yield {"event": "line", "data": f"\nLLM rerank via {provider} "
-                                         f"({'auto-picked' if req.llm == 'auto' else 'forced'})…"}
-        async for evt in run_streamed(cli.LLM_RANK, "--save", env=cli._llm_env(provider)):
-            yield evt
-
-    rejected = await asyncio.to_thread(cli._auto_reject)
-    if rejected:
-        yield {"event": "line", "data": f"\n🚫 auto-rejected {rejected} off-profile job(s)"}
+    unarranged = await asyncio.to_thread(store.get_jobs, "scraped")
+    yield {"event": "line", "data": f"\n{len(unarranged)} job(s) awaiting arrangement — "
+                                     f"run Arrange to sort them into eligible/needs_mod/stretch."}
     stats = await asyncio.to_thread(store.stats)
     yield {"event": "done", "data": json.dumps({"stats": stats})}
 
 
 @app.post("/api/search")
 async def post_search(req: SearchRequest):
-    if req.llm not in _SEARCH_LLM_CHOICES:
-        raise HTTPException(400, f"invalid llm {req.llm!r}; choices: {_SEARCH_LLM_CHOICES}")
     return _locked_sse(lambda: _stream_search(req))
 
 
@@ -370,6 +356,9 @@ class RankRequest(BaseModel):
 
 
 async def _stream_rank(args: list[str]):
+    """Shells out to `main.py arrange` as a whole subprocess (not calling llm_rank.py
+    directly) — this means arrange's match.py + auto-reject + LLM-refine sequence
+    (2026-08-23, PLAN §9) applies here for free; no separate wiring needed."""
     yield {"event": "line", "data": f"$ main.py {' '.join(args)}"}
     async for evt in run_streamed(cli.ROOT / "main.py", *args):
         yield evt
@@ -383,7 +372,7 @@ async def post_rank(req: RankRequest):
     if req.limit < 1:
         raise HTTPException(400, "limit must be >= 1")
 
-    args = ["rank", "--llm", req.llm, "--limit", str(req.limit)]
+    args = ["arrange", "--llm", req.llm, "--limit", str(req.limit)]
     if req.eligible:
         args.append("--eligible")
     if req.jobs:

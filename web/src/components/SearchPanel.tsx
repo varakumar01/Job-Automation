@@ -3,7 +3,6 @@ import { MagnifyingGlass, ArrowClockwise } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { LLM_OPTIONS, LlmSelect } from '@/components/LlmSelect'
 import { streamSearch, type Source } from '@/lib/api'
 import type { StreamFn } from '@/lib/usePipelineRunner'
 import * as v from '@/lib/validate'
@@ -22,7 +21,6 @@ export function SearchPanel({ sources, running, run }: SearchPanelProps) {
   const [workers, setWorkers] = useState(0) // 0 = auto: one worker per available plugin
   const [source, setSource] = useState('all')
   const [recheck, setRecheck] = useState(false)
-  const [llm, setLlm] = useState('auto')
   const [touched, setTouched] = useState(false)
 
   const errors = {
@@ -37,7 +35,7 @@ export function SearchPanel({ sources, running, run }: SearchPanelProps) {
     setTouched(true)
     if (hasErrors) return
     run((onLine, onDone, onError) =>
-      streamSearch({ queries, locations, days, source, limit, workers, recheck, llm }, onLine, onDone, onError),
+      streamSearch({ queries, locations, days, source, limit, workers, recheck }, onLine, onDone, onError),
     )
   }
 
@@ -90,19 +88,8 @@ export function SearchPanel({ sources, running, run }: SearchPanelProps) {
         </Select>
         {/* Grouped so these stay together and wrap as a unit on narrow
             screens instead of each field landing on its own ragged row
-            (finding 13 — measured live at 390px). LlmSelect lives here, not
-            beside the bare `source` Select above, because it renders its own
-            label+refresh row above the trigger — next to unlabelled controls
-            that would misalign the top edge; here it matches its labelled
-            NumberField siblings (code-reviewer MINOR, 2026-08-23). */}
+            (finding 13 — measured live at 390px). */}
         <div className="flex flex-wrap items-start justify-center gap-2.5">
-          <LlmSelect
-            value={llm}
-            onChange={setLlm}
-            options={LLM_OPTIONS}
-            pinnedFirst="auto"
-            triggerClassName="h-9 w-40 text-sm"
-          />
           <NumberField label="days" value={days} onChange={setDays} error={touched ? errors.days : null} />
           <NumberField label="limit" value={limit} onChange={setLimit} error={touched ? errors.limit : null} />
           <NumberField

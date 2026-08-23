@@ -17,7 +17,12 @@ CREATE TABLE IF NOT EXISTS jobs (
     llm_reason           TEXT,                        -- one-line LLM fit rationale
     role_profile         TEXT,                        -- best-fit résumé variant
     status               TEXT    NOT NULL DEFAULT 'scraped',
-                                                      -- scraped|matched|tailored|ready|applied|skipped|failed|rejected
+                                                      -- scraped ("Unarranged" in the UI) | matched
+                                                      -- (arranged into a tier) | tailored | applied |
+                                                      -- skipped | failed | rejected. 'ready' was
+                                                      -- retired (2026-08-23: no direct-apply
+                                                      -- automation) — VALID_STATUSES in
+                                                      -- data/store.py is the source of truth.
     tailored_resume_path TEXT,
     answers_json         TEXT,                        -- humanise-responder answers (JSON)
     screenshot_path      TEXT,                        -- apply-agent review-gate screenshot

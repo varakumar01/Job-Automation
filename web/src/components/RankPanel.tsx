@@ -18,12 +18,16 @@ export function RankPanel({ running, run }: RankPanelProps) {
   const [llm, setLlm] = useState('auto')
   const [limit, setLimit] = useState(20)
   const [eligible, setEligible] = useState(true)
-  const [save, setSave] = useState(false)
+  // Arrange is now the durable sort action (2026-08-23, PLAN §9: it also runs
+  // match.py + auto-reject) — default to persisting scores so Unarranged jobs
+  // actually leave that tier and Prep's "LLM's best" selection isn't permanently
+  // empty. Still a checkbox: a dry run to preview ordering is legitimate.
+  const [save, setSave] = useState(true)
   const [touched, setTouched] = useState(false)
 
   const limitError = v.positiveInt(limit, 'Limit')
 
-  function runRank() {
+  function runArrange() {
     setTouched(true)
     if (limitError) return
     run((onLine, onDone, onError) => streamRank({ llm, limit, eligible, save }, onLine, onDone, onError))
@@ -33,13 +37,13 @@ export function RankPanel({ running, run }: RankPanelProps) {
     <div className="rounded-xl border bg-card p-5">
       <div className="mb-3 flex items-center gap-2">
         <ChartBar className="size-5 text-muted-foreground" weight="bold" />
-        <span className="text-base font-medium">Rank — LLM rerank by résumé fit</span>
+        <span className="text-base font-medium">Arrange — sort unarranged jobs into tiers</span>
       </div>
       <div className="flex flex-wrap items-end gap-4">
         <LlmSelect value={llm} onChange={setLlm} options={LLM_OPTIONS} pinnedFirst="auto" autoSelectPicked />
         <div>
           <Label htmlFor={limitId} className="text-xs">
-            Shortlist size
+            LLM refinement shortlist size
           </Label>
           <Input
             id={limitId}
@@ -59,8 +63,8 @@ export function RankPanel({ running, run }: RankPanelProps) {
           <input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} />
           save scores (needed for prep's "LLM's best")
         </label>
-        <Button size="lg" onClick={runRank} disabled={running}>
-          {running ? 'Running…' : 'Run rank'}
+        <Button size="lg" onClick={runArrange} disabled={running}>
+          {running ? 'Running…' : 'Run arrange'}
         </Button>
       </div>
     </div>

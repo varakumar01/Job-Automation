@@ -47,6 +47,7 @@ export interface EnvEntry {
 }
 
 export interface JobLists {
+  unarranged: Job[]
   eligible: Job[]
   needs_mod: Job[]
   stretch: Job[]
@@ -145,7 +146,6 @@ export interface SearchParams {
   limit: number
   workers: number
   recheck?: boolean
-  llm: string
 }
 
 export interface PrepParams {

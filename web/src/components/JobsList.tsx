@@ -106,7 +106,9 @@ function JobsListImpl({
   if (jobs.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-        No jobs yet — run a search to populate results.
+        {tier === 'unarranged'
+          ? "Nothing waiting to be arranged — run Search to find more, then Arrange to sort them."
+          : 'No jobs yet — run a search to populate results.'}
       </div>
     )
   }
@@ -170,7 +172,12 @@ function JobCard({
   const { gateReady, badge } = computeGate(job, tier)
   const actionable = gateReady || forceApply
   const stale = isStale(job.posted_at)
-  const canPrep = !readOnly && !gateReady && !!onPrepJob && !['applied', 'skipped', 'failed'].includes(job.status)
+  // 'scraped' (Unarranged) jobs are excluded: `cmd_prep` only ever selects from
+  // `store.get_jobs(status="matched")`, even for an explicit --jobs id
+  // (main.py:426-427) — an unarranged job would silently no-op, the same class
+  // of dead-button bug fixed for the 'claude' llm default (PLAN §9, 2026-08-23).
+  const canPrep = !readOnly && !gateReady && !!onPrepJob &&
+    !['applied', 'skipped', 'failed', 'scraped'].includes(job.status)
 
   async function logOutcome(outcome: 'applied' | 'skipped' | 'failed') {
     if (!actionable) return
