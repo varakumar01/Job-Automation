@@ -145,6 +145,7 @@ export interface SearchParams {
   limit: number
   workers: number
   recheck?: boolean
+  llm: string
 }
 
 export interface PrepParams {

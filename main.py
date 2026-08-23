@@ -16,8 +16,10 @@ Job selection (so you can target just the best matches): `prep --eligible` /
 `prep --jobs "1,2"`, and `apply --query <text>` / `apply --jobs "1,2"` /
 `apply --source <portal>`.
 
-LLM choice (`prep --llm`): claude = this Claude Code session (free, default),
-grok = xAI/Groq automation (.env keys), api = Anthropic API.
+LLM choice (`prep --llm`, `rank --llm`, `search --llm`): auto (default) tries
+nvidia → grok → deepseek → api and uses whichever actually answers right now;
+`prep` additionally accepts claude = this Claude Code session (free, manual,
+no automation). Full provider/default detail lives in `-h`, not here.
 """
 
 from __future__ import annotations
@@ -150,19 +152,27 @@ def cmd_search(args) -> int:
         print(f"\n⚠ profile-matcher exited {match_rc} — scores/coverage above may be "
               f"stale or incomplete (see its output above for why).", file=sys.stderr)
         rc = rc or match_rc
-    # LLM-rerank the freshly matched jobs with whichever provider is actually
-    # working right now (nvidia → grok → deepseek → api). `_ordered()` already
-    # prefers llm_score over match_score, so lists sort by real fit the moment
-    # this succeeds; if every provider is currently dead, fall back to the
-    # keyword score with a clear reason instead of a silent no-op.
-    provider, probe_results = _pick_llm_provider()
-    if provider:
-        print(f"\nLLM rerank via {provider} (auto-picked)...")
-        _run(LLM_RANK, "--save", env=_llm_env(provider))
+    # LLM-rerank the freshly matched jobs. `--llm auto` (default) tries whichever
+    # provider is actually working right now (nvidia → grok → deepseek → api);
+    # `--llm <provider>` forces one, skipping the probe entirely. `_ordered()`
+    # already prefers llm_score over match_score, so lists sort by real fit the
+    # moment this succeeds; if every provider is currently dead (auto path only),
+    # fall back to the keyword score with a clear reason instead of a silent no-op.
+    llm_arg = getattr(args, "llm", "auto")
+    if llm_arg == "auto":
+        provider, probe_results = _pick_llm_provider(
+            force_recheck=getattr(args, "recheck_providers", False))
+        if provider is None:
+            reasons = "; ".join(f"{p}: {r['detail']}" for p, r in probe_results.items())
+            print(f"\n⚠ no working LLM provider ({reasons}) — ordering by keyword match_score "
+                  f"instead. Run `main.py keys --llm` for details.", file=sys.stderr)
+        else:
+            print(f"\nLLM rerank via {provider} (auto-picked)...")
     else:
-        reasons = "; ".join(f"{p}: {r['detail']}" for p, r in probe_results.items())
-        print(f"\n⚠ no working LLM provider ({reasons}) — ordering by keyword match_score "
-              f"instead. Run `main.py keys --llm` for details.", file=sys.stderr)
+        provider = llm_arg
+        print(f"\nLLM rerank via {provider} (forced)...")
+    if provider:
+        _run(LLM_RANK, "--save", env=_llm_env(provider))
     # Park off-profile jobs so the LLM ranker/prep only ever touches relevant ones.
     rejected = _auto_reject()
     if rejected:
@@ -303,6 +313,12 @@ def cmd_lists(args) -> int:
 
 
 def _llm_env(provider: str) -> dict:
+    if provider == "auto":
+        # Callers must resolve "auto" to a concrete provider via _pick_llm_provider()
+        # BEFORE calling _llm_env — the catch-all below would otherwise silently hand
+        # back session mode for an unresolved "auto" instead of erroring (see cmd_rank/
+        # cmd_search/cmd_prep for the resolve-then-call pattern).
+        raise ValueError("_llm_env('auto') — resolve via _pick_llm_provider() first")
     if provider == "grok":
         return {"LLM_PROVIDER": "grok",
                 "XAI_BASE_URL": os.environ.get("XAI_BASE_URL") or GROQ_BASE,
@@ -342,7 +358,12 @@ def _llm_env(provider: str) -> dict:
                 "LLM_SYSTEM_PREFIX": os.environ.get("LLM_SYSTEM_PREFIX", NVIDIA_SYSTEM_PREFIX),
                 "LLM_EXTRA_BODY": os.environ.get("LLM_EXTRA_BODY") or NVIDIA_EXTRA_BODY}
     if provider == "api":
-        return {"LLM_PROVIDER": "api"}
+        # ALWAYS clear (code-reviewer MINOR, 2026-08-23): a stray LLM_MODEL/
+        # LLM_EXTRA_BODY left over from a previous nvidia/deepseek run would
+        # otherwise leak into the Anthropic call — model() reads LLM_MODEL at
+        # call time, so a nemotron/deepseek model id here would produce an
+        # opaque Anthropic 404 instead of falling back to the api default.
+        return {"LLM_PROVIDER": "api", "LLM_MODEL": "", "LLM_EXTRA_BODY": ""}
     return {"LLM_PROVIDER": "session"}
 
 
@@ -364,7 +385,22 @@ def cmd_prep(args) -> int:
               "the matched jobs\" — it will prepare/save each stage. "
               "(No automation here by design.)")
         return 0
-    env = _llm_env(args.llm)
+    provider = args.llm
+    if provider == "auto":
+        provider, probe_results = _pick_llm_provider(
+            force_recheck=getattr(args, "recheck_providers", False))
+        if provider is None:
+            # Unlike rank, prep has no keyword-matcher fallback — writing a JD brief and
+            # tailoring a résumé genuinely requires a model. Report why and stop rather
+            # than silently degrading to session mode (that would be the same
+            # _llm_env('auto') trap this function exists to avoid).
+            reasons = "; ".join(f"{p}: {r['detail']}" for p, r in probe_results.items())
+            print(f"⚠ no working LLM provider ({reasons}) — nothing to prep with. "
+                  f"Run `main.py keys --llm` for details, or pass --llm claude for "
+                  f"session mode.", file=sys.stderr)
+            return 1
+        print(f"(auto-picked provider: {provider})")
+    env = _llm_env(provider)
     lim = ["--limit", str(args.limit)] if args.limit is not None else []
     store.init_db()
 
@@ -392,7 +428,7 @@ def cmd_prep(args) -> int:
     jobs_arg = ["--jobs", ",".join(map(str, ids))] if ids else []
     id_set = set(ids) if ids else None
     scope = f"{len(ids)} selected job(s)" if ids else "all pending jobs"
-    print(f"Prep via --llm={args.llm} (model {env.get('LLM_MODEL', 'default')}) — {scope}.")
+    print(f"Prep via --llm={provider} (model {env.get('LLM_MODEL', 'default')}) — {scope}.")
 
     # NOTE the user about non-best jobs whose résumé will be LLM-MODIFIED. needs_mod jobs
     # are tailored by default; with --modify-resume, eligible jobs get modified too; with
@@ -709,6 +745,12 @@ Pipeline runs left to right:
     --workers N Plugins fetched in parallel (a plugin's own query×location
                   combos still run one at a time)  (default 0 = auto, one
                   worker per available plugin)
+    --llm       LLM used for the post-scrape rerank step. auto (default) tries
+                  nvidia→grok→deepseek→api and uses whichever actually answers right
+                  now; or force one: nvidia | grok | deepseek | api. Falls back to
+                  the keyword matcher if every provider is dead (auto only).
+    --recheck-providers  with --llm auto, ignore the 10-min provider-health cache,
+                  re-probe now
     --recheck   Re-seen jobs currently 'rejected' go back to 'scraped' for
                   re-evaluation instead of staying invisible forever (off by default)
                 Note: plugins that ignore location (most of them) run each query
@@ -741,13 +783,19 @@ Pipeline runs left to right:
 
 ━━━ PREP ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   prep          Write JD briefs → tailor résumé. Advances to 'tailored' (the apply gate).
-    --llm       Who writes: nvidia | grok | deepseek | api | claude
+    --llm       Who writes: auto (default) | nvidia | grok | deepseek | api | claude
+                  auto     — tries nvidia→grok→deepseek→api, uses whichever actually
+                             answers right now; stops (no keyword fallback — writing
+                             needs a model) if every provider is currently dead
                   nvidia   — NVIDIA NIM (model ids in main.py's NVIDIA_MODEL/_BACKUP —
                              re-verified 2026-08-22; NIM entitlements change without notice)
                   grok     — Groq free tier (rate-limited)
                   deepseek — DeepSeek API (paid, cheap, no TPM wall)
                   api      — Anthropic API
-                  claude   — this Claude Code session (free, manual)
+                  claude   — this Claude Code session (free, manual; still available,
+                             just no longer the default)
+    --recheck-providers  with --llm auto, ignore the 10-min provider-health cache,
+                  re-probe now
 
     JOB SELECTION (pick one, or omit for all pending):
     --eligible      ✅ Best-match jobs only (apply with master résumé as-is)
@@ -930,6 +978,14 @@ def main(argv=None) -> int:
                    help="re-seen jobs currently at 'rejected' are moved back to 'scraped' so "
                         "the matcher/classifier re-evaluate them (e.g. after an eligibility "
                         "rule change). Off by default.")
+    p.add_argument("--llm", choices=["auto", "grok", "deepseek", "nvidia", "api"], default="auto",
+                   help="LLM used for the post-scrape rerank step. auto (default) tries "
+                        "nvidia→grok→deepseek→api and uses whichever actually answers right "
+                        "now; or force one provider. Falls back to the keyword matcher if "
+                        "every provider is dead (auto only).")
+    p.add_argument("--recheck-providers", action="store_true",
+                   help="with --llm auto, ignore the cached provider health and re-probe "
+                        "every candidate now (default: reuse a probe result up to 10 min old)")
     p.set_defaults(func=cmd_search)
 
     p = sub.add_parser("lists")
@@ -948,7 +1004,14 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_rejected)
 
     p = sub.add_parser("prep")
-    p.add_argument("--llm", choices=["claude", "grok", "deepseek", "nvidia", "api"], default="claude")
+    p.add_argument("--llm", choices=["auto", "claude", "grok", "deepseek", "nvidia", "api"],
+                   default="auto",
+                   help="auto (default) tries nvidia→grok→deepseek→api and uses whichever "
+                        "actually answers right now; claude = session mode (manual, no "
+                        "automation); or force one provider.")
+    p.add_argument("--recheck-providers", action="store_true",
+                   help="with --llm auto, ignore the cached provider health and re-probe "
+                        "every candidate now (default: reuse a probe result up to 10 min old)")
     p.add_argument("--eligible", action="store_true",
                    help="only eligible best-match jobs (keyword score)")
     p.add_argument("--llm-best", action="store_true",

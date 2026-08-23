@@ -1,20 +1,25 @@
-import { useId, useMemo, useState } from 'react'
-import { ArrowClockwise, Sparkle } from '@phosphor-icons/react'
+import { useId, useState } from 'react'
+import { Sparkle } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { LLM_OPTIONS as BASE_LLM_OPTIONS, LlmSelect, type LlmOption } from '@/components/LlmSelect'
 import { streamPrep, type PrepParams } from '@/lib/api'
-import { useLlmProviders } from '@/lib/useLlmProviders'
 import type { StreamFn } from '@/lib/usePipelineRunner'
 import * as v from '@/lib/validate'
 
-const LLM_OPTIONS = [
+// Built from the shared BASE_LLM_OPTIONS (single source of truth for the
+// auto/grok/deepseek/nvidia/api labels — code-reviewer NIT, 2026-08-23: an
+// independent copy here could drift from Rank/Search's) plus 'claude' (session
+// mode: this Claude Code session writes the brief/résumé by hand, no API
+// call) — the other panels never offer it, since they have no manual-write
+// path. It sits right after 'auto' via LlmSelect's `staticValues`, with no
+// live-health glyph (it's never probed).
+const LLM_OPTIONS: LlmOption[] = [
+  BASE_LLM_OPTIONS[0], // auto
   { value: 'claude', label: 'Claude (this session — manual, no automation)' },
-  { value: 'grok', label: 'Grok (Groq, free tier)' },
-  { value: 'deepseek', label: 'DeepSeek (paid, cheap)' },
-  { value: 'nvidia', label: 'NVIDIA NIM (free tier)' },
-  { value: 'api', label: 'Anthropic API' },
+  ...BASE_LLM_OPTIONS.slice(1),
 ]
 
 const SELECTION_OPTIONS: Array<{ value: PrepParams['selection']; label: string }> = [
@@ -32,42 +37,18 @@ interface PrepPanelProps {
 }
 
 export function PrepPanel({ running, run }: PrepPanelProps) {
-  const llmId = useId()
   const selectionId = useId()
   const jobsId = useId()
   const limitId = useId()
-  const [llm, setLlm] = useState('claude')
-  const [selection, setSelection] = useState<PrepParams['selection']>('pending')
+  const [llm, setLlm] = useState('auto')
+  // needs_mod = jobs that need résumé tailoring — the tier prep actually exists for
+  // (2026-08-23, PLAN §9: revises the earlier 'pending' default, which ran every
+  // matched job including ones the master résumé already fits as-is).
+  const [selection, setSelection] = useState<PrepParams['selection']>('needs_mod')
   const [jobs, setJobs] = useState('')
   const [modifyResume, setModifyResume] = useState(false)
   const [limit, setLimit] = useState('')
   const [touched, setTouched] = useState(false)
-
-  // Unlike Rank, prep's default stays 'claude' (manual session mode, no API
-  // call, no automation) even once a live provider is known to work — that
-  // default is deliberate, not a fallback, so a health probe never overrides
-  // it. Only the option order/status dots reflect live health here.
-  const { data: health, loading: healthLoading, refresh: refreshHealth } = useLlmProviders()
-  const orderedLlmOptions = useMemo(() => {
-    const rest = LLM_OPTIONS.filter((o) => o.value !== 'claude')
-    if (!health) return LLM_OPTIONS
-    const rank = (value: string) => {
-      const p = health.providers.find((row) => row.provider === value)
-      if (!p || p.ok === null) return 1
-      return p.ok ? 0 : 2
-    }
-    return [LLM_OPTIONS[0], ...[...rest].sort((a, b) => rank(a.value) - rank(b.value))]
-  }, [health])
-  function statusGlyph(value: string): string {
-    if (value === 'claude') return ''
-    const p = health?.providers.find((row) => row.provider === value)
-    if (!p || p.ok === null) return '? '
-    return p.ok ? '✓ ' : '✗ '
-  }
-  function statusDetail(value: string): string | undefined {
-    if (value === 'claude') return undefined
-    return health?.providers.find((row) => row.provider === value)?.detail
-  }
 
   const jobsError = selection === 'jobs' ? v.jobIdList(jobs) : null
   const limitError = limit.trim() ? v.positiveInt(Number(limit), 'Limit') : null
@@ -99,44 +80,19 @@ export function PrepPanel({ running, run }: PrepPanelProps) {
         <span className="text-base font-medium">Prep — JD brief → tailor résumé</span>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <div className="flex items-center gap-1.5">
-            <Label htmlFor={llmId} className="text-xs">
-              LLM
-            </Label>
-            <button
-              type="button"
-              onClick={() => refreshHealth(true)}
-              disabled={healthLoading}
-              title="re-probe provider health now"
-              className="text-muted-foreground hover:text-foreground disabled:opacity-50"
-            >
-              <ArrowClockwise className={healthLoading ? 'size-3 animate-spin' : 'size-3'} />
-            </button>
-          </div>
-          <Select value={llm} onValueChange={(val) => setLlm(val ?? 'claude')}>
-            <SelectTrigger id={llmId} className="h-9 w-full text-sm">
-              {/* base-ui's Select.Value shows the raw value by default, not the
-                  matching item's label — map it explicitly. */}
-              <SelectValue>
-                {(val: string) => `${statusGlyph(val)}${LLM_OPTIONS.find((o) => o.value === val)?.label ?? val}`}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {orderedLlmOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value} title={statusDetail(o.value)}>
-                  {statusGlyph(o.value)}
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <LlmSelect
+          value={llm}
+          onChange={setLlm}
+          options={LLM_OPTIONS}
+          pinnedFirst="auto"
+          staticValues={['claude']}
+          triggerClassName="h-9 w-full text-sm"
+        />
         <div>
           <Label htmlFor={selectionId} className="text-xs">
             Job selection
           </Label>
-          <Select value={selection} onValueChange={(val) => setSelection((val ?? 'pending') as PrepParams['selection'])}>
+          <Select value={selection} onValueChange={(val) => setSelection((val ?? 'needs_mod') as PrepParams['selection'])}>
             <SelectTrigger id={selectionId} className="h-9 w-full text-sm">
               <SelectValue>
                 {(val: string) => SELECTION_OPTIONS.find((o) => o.value === val)?.label ?? val}

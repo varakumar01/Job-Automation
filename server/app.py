@@ -233,6 +233,9 @@ def _locked_sse(gen_factory):
 
 # ── search (SSE) ─────────────────────────────────────────────────────────────
 
+_SEARCH_LLM_CHOICES = ("auto", "grok", "deepseek", "nvidia", "api")
+
+
 class SearchRequest(BaseModel):
     queries: str
     locations: str = "Hyderabad,Bengaluru,India"
@@ -241,12 +244,13 @@ class SearchRequest(BaseModel):
     limit: int = 30
     workers: int = 0  # 0 = auto: one worker per available plugin (see scrape.py)
     recheck: bool = False
+    llm: str = "auto"  # LLM for the post-scrape rerank step; forcing one skips the probe.
 
 
 async def _stream_search(req: SearchRequest):
-    """Run scrape.py -> match.py -> LLM rerank (auto-picked provider) -> auto-reject
-    — full parity with `main.cmd_search`, streamed instead of inheriting the
-    terminal directly."""
+    """Run scrape.py -> match.py -> LLM rerank (auto-picked or forced provider) ->
+    auto-reject — full parity with `main.cmd_search`, streamed instead of inheriting
+    the terminal directly."""
     env = {"LINKEDIN_POSTED_DAYS": str(req.days)} if req.days else {}
 
     scrape_args = ["--source", req.source, "--queries", req.queries,
@@ -262,20 +266,25 @@ async def _stream_search(req: SearchRequest):
     async for evt in run_streamed(cli.MATCH):
         yield evt
 
-    # cli._pick_llm_provider() does blocking urllib network I/O (one probe per
-    # candidate provider) — run it off the event loop so SSE keeps flowing for
-    # any other client, and emit a heartbeat first since a probe against a dead
-    # provider can take several seconds with nothing to print in the meantime.
-    yield {"event": "line", "data": "\nprobing LLM providers (nvidia → grok → deepseek → api)…"}
-    provider, probe_results = await asyncio.to_thread(cli._pick_llm_provider)
+    if req.llm == "auto":
+        # cli._pick_llm_provider() does blocking urllib network I/O (one probe per
+        # candidate provider) — run it off the event loop so SSE keeps flowing for
+        # any other client, and emit a heartbeat first since a probe against a dead
+        # provider can take several seconds with nothing to print in the meantime.
+        yield {"event": "line", "data": "\nprobing LLM providers (nvidia → grok → deepseek → api)…"}
+        provider, probe_results = await asyncio.to_thread(cli._pick_llm_provider)
+        if provider is None:
+            reasons = "; ".join(f"{p}: {r['detail']}" for p, r in probe_results.items())
+            yield {"event": "line", "data": f"\n⚠ no working LLM provider ({reasons}) — ordering "
+                                             f"by keyword match_score instead."}
+    else:
+        provider = req.llm
+
     if provider:
-        yield {"event": "line", "data": f"\nLLM rerank via {provider} (auto-picked)…"}
+        yield {"event": "line", "data": f"\nLLM rerank via {provider} "
+                                         f"({'auto-picked' if req.llm == 'auto' else 'forced'})…"}
         async for evt in run_streamed(cli.LLM_RANK, "--save", env=cli._llm_env(provider)):
             yield evt
-    else:
-        reasons = "; ".join(f"{p}: {r['detail']}" for p, r in probe_results.items())
-        yield {"event": "line", "data": f"\n⚠ no working LLM provider ({reasons}) — ordering "
-                                         f"by keyword match_score instead."}
 
     rejected = await asyncio.to_thread(cli._auto_reject)
     if rejected:
@@ -286,6 +295,8 @@ async def _stream_search(req: SearchRequest):
 
 @app.post("/api/search")
 async def post_search(req: SearchRequest):
+    if req.llm not in _SEARCH_LLM_CHOICES:
+        raise HTTPException(400, f"invalid llm {req.llm!r}; choices: {_SEARCH_LLM_CHOICES}")
     return _locked_sse(lambda: _stream_search(req))
 
 
@@ -295,7 +306,7 @@ async def post_search(req: SearchRequest):
 # a single subprocess (via the shared run_streamed) — one source of truth for
 # that logic, same as the CLI.
 
-_PREP_LLM_CHOICES = ("claude", "grok", "deepseek", "nvidia", "api")
+_PREP_LLM_CHOICES = ("auto", "claude", "grok", "deepseek", "nvidia", "api")
 _PREP_SELECTIONS = ("pending", "eligible", "needs_mod", "stretch", "llm_best", "jobs")
 _PREP_SELECTION_FLAGS = {
     "eligible": "--eligible", "needs_mod": "--needs-mod",
@@ -304,8 +315,11 @@ _PREP_SELECTION_FLAGS = {
 
 
 class PrepRequest(BaseModel):
-    llm: str = "claude"
-    selection: str = "pending"  # pending = every matched job lacking a jd_brief
+    llm: str = "auto"
+    # needs_mod = jobs that need résumé tailoring — the tier prep actually exists
+    # for (2026-08-23, PLAN §9: revises the earlier 'pending' default, which ran
+    # every matched job including ones the master résumé already fits as-is).
+    selection: str = "needs_mod"
     jobs: str | None = None  # comma-separated ids, required when selection == "jobs"
     modify_resume: bool = False
     limit: int | None = None

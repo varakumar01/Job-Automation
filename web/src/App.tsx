@@ -56,11 +56,17 @@ function App() {
   // bucket in the app ("needs mod") was presented as uniformly inert, with
   // the only recovery path being a batch run from PrepPanel above. This
   // reuses prep's existing single-job selection mode.
+  //
+  // `llm: 'auto'` (not 'claude') — this is the button whose tooltip promises
+  // "tailors the résumé", but `cmd_prep` short-circuits to a no-op session-mode
+  // message under `--llm claude` before it even reads `--jobs`. Hardcoding
+  // 'claude' here would make that promise false for the exact tier prep now
+  // defaults to (code-reviewer MAJOR, 2026-08-23 — see PLAN.md §9).
   const prepJob = useCallback(
     (jobId: number) => {
       run((onLine, onDone, onError) =>
         streamPrep(
-          { llm: 'claude', selection: 'jobs', jobs: String(jobId), modify_resume: true },
+          { llm: 'auto', selection: 'jobs', jobs: String(jobId), modify_resume: true },
           onLine,
           onDone,
           onError,

@@ -638,6 +638,8 @@ realtime SSE, faster defaults (owner request 2026-08-23)**
   before the user manually touches the selector. Prep intentionally does NOT
   auto-switch its default off `claude` (session mode, zero API calls by design) — only
   the option order/status dots reflect live health there.
+  **Superseded 2026-08-23 — see the "prep UI/CLI — `--llm` default" §9 entry below:
+  prep's default is now `auto`, not `claude`.**
 - [x] `main.py cmd_keys --llm` now also prints `llm_health.status_table()` (was:
   Grok-key pool only, even though last session's own error messages already told
   users to run `keys --llm` for provider detail — that instruction is now true).
@@ -711,6 +713,57 @@ realtime SSE, faster defaults (owner request 2026-08-23)**
   re-verification **6/6 PASS**, no defects. All builds re-verified green.
   **Master not touched**; do not merge `ui-ux-audit-fixes` until the owner
   explicitly says to finalize.
+- [x] **Expose LLM picker in Search + Prep auto-pick by health** (owner request
+  2026-08-23, branch `ui-ux-audit-fixes` — see §9 2026-08-23 for the full
+  element-level decision). `main.py search` gained `--llm {auto,grok,deepseek,
+  nvidia,api}` (default `auto`) + `--recheck-providers`; `SearchRequest`/
+  `post_search` validate + honor it; `SearchPanel.tsx` got an `LlmSelect`
+  dropdown. `main.py prep`'s `--llm` gained `auto` and it's now the default
+  (was `claude`, which stays selectable); `cmd_prep` resolves `auto` via
+  `_pick_llm_provider()` before `_llm_env` (no keyword fallback — reports and
+  returns 1 if every provider is dead); `_llm_env('auto')` now raises
+  `ValueError` as a hardening guard. Prep's default job selection moved
+  `pending` → `needs_mod`. Extracted the `RankPanel.tsx`/`PrepPanel.tsx`
+  duplicated LLM-picker markup into `web/src/components/LlmSelect.tsx` before
+  adding a third copy for Search.
+  **code-tester: 12/12 PASS**, no defects — `_llm_env('auto')` raise, `search`/
+  `prep --help` flags, `prep --llm claude` no-op, `prep --llm auto` real work
+  (job 1168 advanced `matched → tailored`), dead-provider return-1, forced
+  `--llm` skipping the probe, server-side 400 validation, `tsc -b`, and both
+  `LlmSelect` regression behaviors (Rank's `autoSelectPicked`, Prep's `claude`
+  exclusion) all verified against the live code, not reimplemented.
+  **code-reviewer: PASS overall (no BLOCKER/CRITICAL), 2 MAJOR + 5 MINOR + 4
+  NIT — all fixed:** (1) `App.tsx`'s per-job "Prep this job" button hardcoded
+  `llm: 'claude'`, making the exact tier this change defaults to (`needs_mod`)
+  a no-op from its own recovery button → changed to `'auto'`. (2) 3 concurrent
+  `LlmSelect` mounts (Search+Rank+Prep) each fired their own
+  `GET /api/llm-providers`, and `execution/llm_health.py`'s `_probe()` patches
+  process-wide `os.environ` for its network call — concurrent probes could
+  interleave and send one provider's API key to another's base URL → fixed
+  client-side with a module-scoped in-flight-request cache + subscriber list in
+  `useLlmProviders.ts` (one request serves every mounted picker, refresh
+  updates them all) and server-side with a `threading.Lock` around `_probe`'s
+  environ patch in `llm_health.py` (belt-and-braces). MINORs: completions
+  file's `--llm` tab-completion fixed (was suggesting `claude` for
+  `search`/`prep` missing `auto`/new flags); `main.py` module docstring and
+  `_llm_env("api")` (now defensively clears `LLM_MODEL`/`LLM_EXTRA_BODY`, same
+  as the grok/deepseek/nvidia branches) updated; `search`'s HELP_DESC block
+  reordered so the Ctrl-C/location note no longer reads as being about
+  `--recheck-providers`; `SearchPanel.tsx`'s `LlmSelect` moved into the
+  labelled NumberField group so its top edge aligns with sibling labels
+  instead of the bare `source`/`locations` controls; this PLAN.md's two
+  pre-existing "`claude` is deliberately the immune default" statements
+  (§8 above, §9 2026-08-23 "LLM dropdown driven by live health") annotated
+  as superseded with a cross-reference. NITs: `LlmSelect.tsx` added to git
+  (was untracked); redundant `provider = None` removed from `cmd_search`'s
+  dead-provider branch; `PrepPanel.tsx`'s `LLM_OPTIONS` now built from the
+  shared base instead of a byte-duplicate copy. Re-verified after fixes:
+  `python3 -m py_compile main.py server/app.py execution/llm_health.py`,
+  `import main`/`import server.app`/`import execution.llm_health`, `tsc -b`,
+  `npm run lint` (unchanged pre-existing fast-refresh warnings only) all
+  clean; monkeypatched re-run of `cmd_search`'s dead-provider path confirms
+  `llm_rank.py` is still correctly skipped after the redundant-line removal.
+  Master not touched throughout.
 
 ---
 
@@ -1696,6 +1749,8 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   default stays `claude` (session mode, zero API calls) even once a provider is known
   healthy — that default is deliberate, only its option order/status dots react to
   health.
+  **Superseded 2026-08-23 — see the "prep UI/CLI — `--llm` default + job-selection
+  default" entry below: prep's default is now `auto`, not `claude`.**
 - 2026-08-23 — server/app.py (`run_streamed`, `_stream_search`) — realtime SSE
   hardening — owner request: "pipe everything in realtime… if a single line gets
   printed then even print that in UI." `_stream_search` now runs the LLM-rerank stage
@@ -1962,6 +2017,51 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   loops via monkeypatched harnesses against the real code, no network calls). Master
   untouched throughout (branch `ui-ux-audit-fixes`). [revises the 2026-08-23 NVIDIA
   reasoning-mode entry above]
+
+- 2026-08-23 — search UI/CLI — `--llm` — owner: "expose the llm ranker ai option for
+  search via UI". `main.py search` gained `--llm {auto,grok,deepseek,nvidia,api}`
+  (default `auto`) + `--recheck-providers`, mirroring `rank`'s existing flags;
+  `auto` probes nvidia→grok→deepseek→api and falls back to the keyword matcher if
+  every provider is dead, a forced provider skips the probe entirely. `SearchRequest`
+  (`server/app.py`) gained `llm: str = "auto"`, validated against
+  `_SEARCH_LLM_CHOICES` the same way `post_rank` validates `_RANK_LLM_CHOICES`;
+  `_stream_search` only emits the "probing LLM providers…" heartbeat on the auto
+  path. `SearchPanel.tsx` (UI) got an `LlmSelect` dropdown next to the `source`
+  picker, pinned to `auto`, no `autoSelectPicked` (the choice resolves server-side
+  at run time so it can't go stale between page load and clicking Run — unlike
+  Rank, which does default to the live-picked provider since its run is immediate).
+
+- 2026-08-23 — prep UI/CLI — `--llm` default + job-selection default — owner: "for
+  JD prep: use the same logic as llm based on whats available and healthy … Needs
+  resume modification make this as default". Two changes, both **both UI and CLI**
+  per owner's explicit scope choice:
+  1. `--llm` gained an `auto` choice and **became the default** (was `claude`).
+     `cmd_prep` resolves `auto` via `_pick_llm_provider()` *before* calling
+     `_llm_env` (same pattern as `cmd_rank`) — unlike rank, prep has no
+     keyword-matcher fallback (writing a brief/résumé genuinely needs a model), so
+     if every provider is dead it reports why and returns 1 rather than degrading
+     to session mode. `claude` (session mode) stays a selectable option — owner
+     chose "keep as an option" over removing it. `_llm_env` now raises `ValueError`
+     on `"auto"` (hardening) so a caller can never again get the silent
+     `{"LLM_PROVIDER": "session"}` fallback that an unresolved `"auto"` used to
+     produce. `server/app.py`'s `_PREP_LLM_CHOICES`/`PrepRequest.llm` follow suit.
+     **This revises the `PrepPanel.tsx` comment (and the behavior it described)
+     asserting the `claude` default was deliberate and would never be overridden
+     by a health probe** — that assertion is superseded; prep now defaults to
+     `auto` in both the CLI and `PrepRequest`, same as rank.
+  2. Default job selection moved `pending` (all matched jobs) → `needs_mod`
+     ("Needs résumé modification") — the tier prep actually exists to serve;
+     `pending` remains selectable. `PrepPanel.tsx`'s selection `useState` and its
+     `onValueChange` fallback, and `PrepRequest.selection`, all default to
+     `needs_mod` now.
+  Implementation note: `LLM_OPTIONS`/`orderedOptions`/`statusGlyph`/`statusDetail`
+  were duplicated verbatim between `RankPanel.tsx` and `PrepPanel.tsx`; extracted
+  into a shared `web/src/components/LlmSelect.tsx` (with a `staticValues` prop for
+  Prep's non-probed `claude` option and an `autoSelectPicked` prop so only Rank
+  keeps its live-picked-provider default) before adding a third copy for Search.
+  [revises the original prep default established at initial build, §5/§7, AND
+  the 2026-08-23 "LLM dropdown driven by live health" entry above, which had
+  made Prep's `claude` default explicitly immune to health-based switching]
 
 ---
 

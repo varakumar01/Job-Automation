@@ -24,6 +24,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Callable
@@ -39,6 +40,16 @@ TTL_SECS = 600
 DEFAULT_ORDER = ("nvidia", "grok", "deepseek", "api")
 
 _PROBE_PROMPT = "Reply with the single word OK."
+
+# Belt-and-braces (code-reviewer MAJOR, 2026-08-23): _probe() patches the
+# process-wide os.environ for the duration of its network call. The server
+# runs pick_provider() via asyncio.to_thread for each of the (now 3) UI
+# pickers' health requests — without serializing, two concurrent probes for
+# different providers can interleave their environ patch/restore and send one
+# provider's key to another's base URL. The client dedupes concurrent requests
+# (web/src/lib/useLlmProviders.ts), which is the primary fix; this lock makes
+# the module itself safe even if some other future caller doesn't dedupe.
+_env_lock = threading.Lock()
 
 
 def _load() -> dict:
@@ -65,24 +76,25 @@ def _probe(provider: str, env_for: Callable[[str], dict]) -> tuple[bool, str]:
     os.environ for the duration only (subprocess children spawned elsewhere —
     e.g. via main.py's _run() — build their own env from _llm_env() directly,
     so this patch never leaks into them)."""
-    env = env_for(provider)
-    saved = {k: os.environ.get(k) for k in env}
-    os.environ.update({k: v for k, v in env.items() if v is not None})
-    try:
-        # execution.llm reads LLM_PROVIDER/XAI_* etc. at call time (os.environ.get
-        # inside each function), not at import time, so no module reload is needed
-        # between probes — each _probe() call sees the env this call just set.
-        from execution import llm as _llm
-        _llm.complete(_PROBE_PROMPT, max_tokens=8)
-        return True, "ok"
-    except Exception as exc:  # noqa: BLE001 — this function's whole job is to classify failures
-        return False, f"{type(exc).__name__}: {exc}"[:300]
-    finally:
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+    with _env_lock:
+        env = env_for(provider)
+        saved = {k: os.environ.get(k) for k in env}
+        os.environ.update({k: v for k, v in env.items() if v is not None})
+        try:
+            # execution.llm reads LLM_PROVIDER/XAI_* etc. at call time (os.environ.get
+            # inside each function), not at import time, so no module reload is needed
+            # between probes — each _probe() call sees the env this call just set.
+            from execution import llm as _llm
+            _llm.complete(_PROBE_PROMPT, max_tokens=8)
+            return True, "ok"
+        except Exception as exc:  # noqa: BLE001 — this function's whole job is to classify failures
+            return False, f"{type(exc).__name__}: {exc}"[:300]
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
 
 
 def pick_provider(

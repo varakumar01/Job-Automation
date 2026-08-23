@@ -5,7 +5,7 @@
 # Then (main.py is executable, has a shebang):
 #     ./main.py <TAB>            → commands (bare + --tag forms)
 #     ./main.py apply --<TAB>    → that command's flags
-#     ./main.py prep --llm <TAB> → claude grok deepseek api
+#     ./main.py prep --llm <TAB> → auto claude nvidia grok deepseek api
 #
 # It registers on `main.py`, `./main.py`, and (optionally) an alias `js`. For the
 # `.venv/bin/python3 main.py …` form, add an alias to ~/.bashrc so completion works:
@@ -23,9 +23,9 @@ _jobsearch_main_py() {
     local commands="search lists prep apply log applied report reject rejected keys sources stats rank"
 
     # Per-command flags (mirror main.py's subparsers).
-    local f_search="--locations --queries --days --limit --source"
+    local f_search="--locations --queries --days --limit --source --workers --recheck --llm --recheck-providers"
     local f_lists="--raw"
-    local f_prep="--llm --eligible --llm-best --needs-mod --jobs --modify-resume --limit"
+    local f_prep="--llm --recheck-providers --eligible --llm-best --needs-mod --stretch --jobs --modify-resume --limit"
     local f_apply="--limit --source --query --jobs"
     local f_log="--job --outcome --note --screenshot"
     local f_applied=""
@@ -35,7 +35,7 @@ _jobsearch_main_py() {
     local f_keys="--llm --reset"
     local f_sources=""
     local f_stats=""
-    local f_rank="--llm --limit --eligible --jobs --save"
+    local f_rank="--llm --recheck-providers --limit --eligible --jobs --save"
 
     # Identify the command token (first word matching a command, accepting the --tag form).
     local cmd="" i w
@@ -53,14 +53,14 @@ _jobsearch_main_py() {
         return 0
     fi
 
-    # Value completions for known enum flags. --llm differs by command: rank also allows
-    # `auto` (whichever provider is live right now); prep does not.
+    # Value completions for known enum flags. --llm differs by command: prep
+    # additionally allows `claude` (session mode, manual); rank/search do not.
     case "$prev" in
         --llm)
-            if [[ "$cmd" == "rank" ]]; then
-                COMPREPLY=( $(compgen -W "auto nvidia grok deepseek api" -- "$cur") )
+            if [[ "$cmd" == "prep" ]]; then
+                COMPREPLY=( $(compgen -W "auto claude nvidia grok deepseek api" -- "$cur") )
             else
-                COMPREPLY=( $(compgen -W "claude nvidia grok deepseek api" -- "$cur") )
+                COMPREPLY=( $(compgen -W "auto nvidia grok deepseek api" -- "$cur") )
             fi
             return 0 ;;
         --outcome) COMPREPLY=( $(compgen -W "applied skipped failed" -- "$cur") ); return 0 ;;
