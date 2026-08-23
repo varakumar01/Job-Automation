@@ -10,13 +10,16 @@ import type { JobLists } from '@/lib/api'
 
 // Plain labels, not emoji (finding 12) — the count is the useful part, and
 // emoji render inconsistently per-OS on a page that's meant to be shared.
-// 'unarranged' sits first (2026-08-23, PLAN §9) — search results land here,
-// unscored, until Arrange sorts them into the tiers that follow.
+// 'unarranged' sits LAST (2026-08-24, owner: "keep the unarranged in the
+// last" — revises the 2026-08-23 "sits first" placement). It's no longer the
+// default landing tab either (owner: "Eligible should be default selected",
+// same day) — its heading instead turns red while jobs are still waiting, so
+// it stays impossible to miss without having to be the first thing you see.
 const TIERS: Array<{ value: keyof JobLists; label: string }> = [
-  { value: 'unarranged', label: 'Unarranged' },
   { value: 'eligible', label: 'Eligible' },
   { value: 'needs_mod', label: 'Needs mod' },
   { value: 'stretch', label: 'Stretch' },
+  { value: 'unarranged', label: 'Unarranged' },
 ]
 
 const EMPTY_LISTS: JobLists = { unarranged: [], eligible: [], needs_mod: [], stretch: [], off_profile: [] }
@@ -35,7 +38,7 @@ export const ResultsTiers = memo(function ResultsTiers({
   onPrepJob?: (jobId: number) => void
   running?: boolean
 }) {
-  const [tab, setTab] = useState<keyof JobLists>('unarranged')
+  const [tab, setTab] = useState<keyof JobLists>('eligible')
   // A first-time switch into the 342-card "Needs mod" tier measured
   // 300-445ms live (code-tester, 2026-08-23) — borderline against the
   // ~400ms target with no in-between visual acknowledgment. `useTransition`
@@ -106,14 +109,23 @@ export const ResultsTiers = memo(function ResultsTiers({
       >
         <div className="flex items-center gap-2">
           <TabsList>
-            {tierViews.map((t) => (
-              <TabsTrigger key={t.value} value={t.value}>
-                {t.label}
-                <Badge variant="secondary" className="ml-1 text-[10px]">
-                  {t.count}
-                </Badge>
-              </TabsTrigger>
-            ))}
+            {tierViews.map((t) => {
+              // Unarranged is "unresolved" — i.e. still has jobs waiting to be
+              // sorted — until Arrange clears it to 0 (owner request
+              // 2026-08-24: "always show it in red until resolved"). The
+              // color lives on an inner span, not the trigger's own classes,
+              // so it overrides the trigger's active/hover text-color
+              // utilities instead of losing to them.
+              const unresolved = t.value === 'unarranged' && t.count > 0
+              return (
+                <TabsTrigger key={t.value} value={t.value}>
+                  <span className={unresolved ? 'text-destructive' : undefined}>{t.label}</span>
+                  <Badge variant="secondary" className="ml-1 text-[10px]">
+                    {t.count}
+                  </Badge>
+                </TabsTrigger>
+              )
+            })}
           </TabsList>
           {/* Sibling of TabsList, not a child — a role="tablist" (what Base UI's
               TabsList renders as) may only contain role="tab" elements per the

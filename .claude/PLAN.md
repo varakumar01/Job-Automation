@@ -2168,6 +2168,38 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   match/prioritize → ...`, now split into two distinct user-facing actions),
   and the two §8/§9 entries named above]
 
+- 2026-08-24 — web UI (`ResultsTiers.tsx`) — Unarranged tab position + default
+  tab + urgency color — owner (two follow-up requests same session): "keep
+  the unarranged in the last and always show it in red (the heading) until
+  resolved", then "Eligible shuold be default selected". Three changes: (1)
+  `TIERS` reordered so `unarranged` is last, not first (was placed first the
+  previous day, see the "Unarranged section" entry above — that placement is
+  revised, not the underlying `/api/lists`/`classify()` wiring, which is
+  untouched); (2) the tab's label text turns `text-destructive` (red) via an
+  inner `<span>` whenever `count > 0` for that tier, reverting to the normal
+  trigger color once Arrange drains it to 0 — "resolved" is defined as
+  `unarranged.length === 0`, nothing fancier (no dismiss/snooze state); the
+  color lives on a child span rather than the trigger's own className so it
+  isn't overridden by the trigger's `data-active`/hover text-color utility
+  classes, which set color on the trigger element itself. (3) the default
+  landing tab (`useState<keyof JobLists>`) changed from `'unarranged'` to
+  `'eligible'` — moving Unarranged out of the first tab position also meant
+  it should no longer be the first thing shown on load; the red heading is
+  now the sole urgency signal instead of tab position. `tsc -b` and `npm run
+  lint` both clean (same 4 baseline warnings only). Verified live in the
+  browser (chrome-devtools MCP, real dev server + real DB, not a mock):
+  computed `color` read directly off the DOM — with `unarranged` count 0 it's
+  `oklch(0.708 0 0)` (the same muted gray as the other inactive tabs); after
+  `main.py search --recheck` re-queued 5 real rejected jobs back to
+  `scraped`, the same tab's computed color flipped to `oklch(0.704 0.191
+  22.216)` (a genuine red hue, not just a darker gray) while `Eligible`
+  stayed the default-selected tab throughout; after `main.py arrange --save`
+  cleared those 5 back out (auto-rejected, all off-profile), the color
+  reverted to the same gray as before — confirmed both directions, not just
+  the initial state. [revises the "'unarranged' sits first ... default
+  landing tab" placement from the 2026-08-23 "Unarranged section" entry
+  above]
+
 ---
 
 ## §11 Apply-method roadmap  *(owner decision 2026-07-01)*
