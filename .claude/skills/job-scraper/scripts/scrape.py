@@ -207,7 +207,7 @@ def main(argv=None) -> int:
                "Use --list to check availability without fetching.",
     )
     ap.add_argument("--source", default="all",
-                    help="portal name (linkedin/naukri/indeed/...) or 'all' (default: all)")
+                    help="portal name (linkedin/wellfound/greenhouse/...) or 'all' (default: all)")
     ap.add_argument("--query", help="single search query, e.g. 'security engineer' "
                     "(use --queries for more than one)")
     ap.add_argument("--queries", help="comma-separated search queries, e.g. "

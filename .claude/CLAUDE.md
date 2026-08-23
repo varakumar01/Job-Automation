@@ -13,8 +13,11 @@
 
 ## What this project is
 
-An **AI job-search & auto-apply system**. It scrapes jobs from portals (LinkedIn,
-Naukri, Indeed in v1; extensible via a plugin system), tailors the master résumé
+An **AI job-search & auto-apply system**. It scrapes jobs from ~37 portals via an
+extensible plugin system — LinkedIn and Wellfound go through Apify, the other ~35
+ATS/aggregator plugins are token-free (`naukri.py`/`indeed.py` were removed
+2026-08-23, owner request to drop the Apify dependency everywhere except LinkedIn;
+see PLAN.md §9) — tailors the master résumé
 (`varakumar_resume.tex`) per job, understands each job/company, generates
 human-sounding answers, and drives a browser to fill the application —
 **human-in-the-loop: a person reviews and clicks submit; nothing is submitted

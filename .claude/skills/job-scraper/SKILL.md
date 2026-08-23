@@ -1,10 +1,11 @@
 ---
 name: job-scraper
 description: >
-  Find and scrape job postings from portals (LinkedIn, Naukri, Indeed; extensible
-  via plugins) into the local store. Trigger on "find jobs", "scrape jobs for
-  <query>", "pull <role> roles from LinkedIn/Naukri/Indeed", "search <portal> for
-  jobs". First stage of the pipeline — writes normalized rows at status `scraped`.
+  Find and scrape job postings from ~37 portals (LinkedIn + Wellfound via Apify,
+  ~35 more token-free via ATS/aggregator plugins; extensible via plugins) into the
+  local store. Trigger on "find jobs", "scrape jobs for <query>", "pull <role> roles
+  from LinkedIn/Wellfound/Greenhouse", "search <portal> for jobs". First stage of the
+  pipeline — writes normalized rows at status `scraped`.
 model: sonnet
 ---
 
@@ -30,9 +31,11 @@ Reads: portals (Apify actors + custom plugins). Writes: `jobs` rows → `scraped
   missing dependency (e.g. `"no APIFY_TOKEN & no chromium"`) instead of the generic
   base-class default `"check creds"`. All three are optional/cosmetic (nothing breaks
   if a new plugin skips them) but keep them — that's the whole point of the report.
-- **Apify-backed** portals (`linkedin`, `naukri`, `indeed`) call their actor via
-  `apify-client` using `APIFY_TOKEN` from `.env`. Each adapter passes the requested
-  `limit` into the actor's own count field so cost is bounded (pay-per-event).
+- **Apify-backed** portals (`linkedin`, `wellfound` — `naukri`/`indeed` were removed
+  2026-08-23, owner request to drop Apify dependency everywhere except LinkedIn, see
+  PLAN.md §9) call their actor via `apify-client` using `APIFY_TOKEN` from `.env`.
+  Each adapter passes the requested `limit` into the actor's own count field so cost
+  is bounded (pay-per-event).
 - **Custom** portals copy `_custom_template.py` → `<site>.py` and drive the user's
   logged-in Playwright session.
 
@@ -76,26 +79,24 @@ limits). DB upserts are serialized on the main thread after every fetch task has
 finished — the executor `with` block guarantees the whole matrix is done before the
 report prints or `main.py`'s matcher runs next.
 
-## Chosen actors (verified 2026-06-30)
+## Chosen actors (verified 2026-06-30; naukri/indeed rows removed 2026-08-23 — see PLAN.md §9)
 
 | Portal | Actor | Cost | Notes |
 |---|---|---|---|
 | linkedin | `curious_coder/linkedin-jobs-scraper` | ~$0.001/result | builds a search URL from query+location; `scrapeCompany=False` |
-| indeed | `borderline/indeed-scraper` | ~$0.005/job | `country` defaults to `in` (`APIFY_INDEED_COUNTRY`) |
-| naukri | `muhammetakkurtt/naukri-job-scraper` | per-event | `fetchDetails=True` for jd_text (`APIFY_NAUKRI_DETAILS=0` to skip) |
+| wellfound | `thirdwatch/wellfound-jobs-scraper` (primary; session-based fallback) | ~$0.004-0.008/result | PRIMARY tier only — see `wellfound.py` docstring |
 
-Override any actor id via `APIFY_ACTOR_{LINKEDIN,NAUKRI,INDEED}` in `.env`.
+Override any actor id via `APIFY_ACTOR_{LINKEDIN,WELLFOUND}` in `.env`.
 
 ## Safety / cost (PLAN.md §6)
 
-- Actors bill **per produced result**, and several **overshoot or floor** the
-  requested limit: LinkedIn requires `count ≥ 10` and scrapes whole pages (can
-  produce ~50+), **Naukri has a hard 50-job minimum** (so `--limit 3` still
-  produces/charges ~50). The runner only *stores* `--limit` rows, but the actor
-  charges for what it produces. The real spend ceiling is **`APIFY_MAX_CHARGE_USD`**
-  (default $0.50/run); lower it for tighter control.
-- The user is on the Apify **FREE** plan (~$5/mo **per key**). Keep `--limit` small
-  and prefer LinkedIn/Indeed for tiny scrapes; confirm before large or all-source runs.
+- Actors bill **per produced result**, and LinkedIn's actor **overshoots** the
+  requested limit — it requires `count ≥ 10` and scrapes whole pages (can produce
+  ~50+). The runner only *stores* `--limit` rows, but the actor charges for what it
+  produces. The real spend ceiling is **`APIFY_MAX_CHARGE_USD`** (default $0.50/run);
+  lower it for tighter control.
+- The user is on the Apify **FREE** plan (~$5/mo **per key**). Keep `--limit` small;
+  confirm before large or all-source runs.
 - Never hardcode `APIFY_TOKEN` — it comes from `.env` only.
 
 ## Multi-key rotation + health (PLAN.md §9)
@@ -122,10 +123,12 @@ A new job source = **one file**, no edits anywhere else (registry auto-discovers
    `parse_companies`/`round_robin`/`post_json` — don't reinvent them. To add a COMPANY
    to an already-built platform, just add its slug to the existing `.env` list — no new
    file needed. See `docs/job_portals.md` for verified endpoint patterns per platform.
-2. **Apify-backed portal:** copy an existing `plugins/<portal>.py` (e.g. `indeed.py`),
+2. **Apify-backed portal:** copy an existing `plugins/<portal>.py` (e.g. `wellfound.py`),
    set a unique `name` (this is also `jobs.source`), point `actor_id(...)` at the new
    actor, and map its output fields with `first_text(...)`. Multi-key rotation, cost
-   caps, and normalization come for free via `_apify`.
+   caps, and normalization come for free via `_apify`. New Apify-backed portals need
+   explicit owner sign-off first — the owner's 2026-08-23 decision was to keep Apify
+   usage to the minimum (LinkedIn + Wellfound only), not grow it by default.
 3. **Custom (non-ATS) portal** — a single bespoke company site, no known ATS
    underneath: copy an existing custom plugin (e.g. `synopsys.py`) as the template
    rather than `_custom_template.py` (that scaffold's `is_available()` wrongly assumes

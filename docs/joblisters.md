@@ -11,11 +11,13 @@ naming each one's domain, fetch mechanism, and outcome — see `job-scraper/SKIL
 
 ## Currently built (plugins live)
 
+> `naukri.py` and `indeed.py` were removed 2026-08-23 (owner request: drop Apify
+> dependency everywhere except LinkedIn; Wellfound kept since it has no other usable
+> fetch path — see PLAN.md §9).
+
 | Lister | Mechanism | Plugin file | Notes |
 |--------|-----------|-------------|-------|
 | **LinkedIn** | Apify actor `curious_coder/linkedin-jobs-scraper` | `linkedin.py` | `APIFY_TOKEN` required; `LINKEDIN_POSTED_DAYS` for recency filter |
-| **Naukri** | Apify actor `muhammetakkurtt/naukri-job-scraper` | `naukri.py` | `APIFY_TOKEN` required; min 50 jobs/run |
-| **Indeed** | Browser-first (headless render) + Apify fallback | `indeed.py` | `INDEED_USE_BROWSER=1` (default) parses `providerData["mosaic-provider-jobcards"]`; falls back to Apify actor `borderline/indeed-scraper` if unconfigured/blocked/empty. See §9 2026-07-10 |
 | **RemoteOK** | Public JSON API (no token) | `remoteok.py` | `GET https://remoteok.com/api[?tag=<query>]` |
 | **Remotive** | Public JSON API (no token) | `remotive.py` | `GET https://remotive.com/api/remote-jobs?search=<q>&limit=N` (server-side over-fetches 2x to compensate for client-side filtering) |
 | **Arbeitnow** | Public JSON API (no token) | `arbeitnow.py` | `GET https://www.arbeitnow.com/api/job-board-api` (no server search — client-filtered); `created_at` is Unix epoch, converted to ISO |

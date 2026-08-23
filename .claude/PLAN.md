@@ -14,8 +14,10 @@ This repo began as a résumé/LaTeX workspace (master `varakumar_resume.tex`, a 
 finds and applies to jobs**.
 
 **Goals**
-1. **Source** jobs from multiple portals (v1: LinkedIn, Naukri, Indeed), extensible to
-   more via a plugin system.
+1. **Source** jobs from multiple portals (v1: LinkedIn, Naukri, Indeed — Naukri and
+   Indeed later removed 2026-08-23, owner request to drop Apify dependency everywhere
+   except LinkedIn; see §9), extensible to more via a plugin system. Live portal count
+   today: ~37 (LinkedIn + Wellfound via Apify, ~35 more token-free).
 2. **Prioritize** which jobs/role-profiles best fit the master résumé with the *fewest*
    changes.
 3. **Tailor** the résumé per job from the master `.tex`, compiled to PDF.
@@ -65,7 +67,7 @@ behavior). `chrome-screenshot-tester` verifies the filled form before the human 
 |---|---|---|
 | Language | **Python 3** | Matches SKILL.md `python3` convention; great for AI + scraping. |
 | Browser automation | **Playwright (MCP/CLI)** | Top pick (research). Used by `apply-agent` and any custom scraper plugin. |
-| Managed scraping | **Apify** actors via REST/`apify-client` | LinkedIn / Naukri / Indeed actors exist; paid per-listing; `APIFY_TOKEN` in `.env`. |
+| Managed scraping | **Apify** actors via REST/`apify-client` | LinkedIn (sole mechanism) / Wellfound (primary tier) actors; paid per-listing; `APIFY_TOKEN` in `.env`. Naukri/Indeed actors dropped 2026-08-23 (§9). |
 | Résumé build | **tectonic** via existing `Makefile` | `make` compiles `<resume>.tex → .pdf`. |
 | Store | **SQLite** (stdlib `sqlite3`) + JSON export | Single-file, zero-dep, resumable. |
 | Secrets/config | **`.env`** (`python-dotenv`) | `APIFY_TOKEN`, model API keys, portal session paths. Never committed. |
@@ -83,7 +85,7 @@ Single SQLite DB at `data/jobs.db` (+ a `data/jobs.json` export for inspection).
 | Column | Meaning |
 |---|---|
 | `id` | internal PK |
-| `source` | portal name (`linkedin`/`naukri`/`indeed`/…) |
+| `source` | portal name (`linkedin`/`wellfound`/`greenhouse`/…) |
 | `ext_id` | portal's job id (dedupe key with `source`) |
 | `url` | job posting URL |
 | `title`, `company`, `location`, `posted_at` | normalized fields |
@@ -115,8 +117,10 @@ scraping code with no Claude-specific dependency, sibling to `data/`/`execution/
   - `fetch(query: str, limit: int) -> list[Job]` — search + normalize.
 - **`registry.py`** auto-discovers every `JobSourcePlugin` subclass in the folder, so
   **adding a portal = dropping one `<site>.py` file** — no other code changes.
-- **Apify-backed plugins** (`linkedin.py`, `naukri.py`, `indeed.py`) call the Apify
-  *Run Actor* endpoint with `APIFY_TOKEN` and map actor output → `Job`.
+- **Apify-backed plugins** (`linkedin.py`, `wellfound.py` — `naukri.py`/`indeed.py`
+  removed 2026-08-23, owner request to drop Apify dependency everywhere except
+  LinkedIn, see §9) call the Apify *Run Actor* endpoint with `APIFY_TOKEN` and map
+  actor output → `Job`.
 - **Custom plugins** (for portals Apify doesn't cover) implement the same interface
   using a Playwright logged-in session.
 - Each plugin **checks availability / "are there jobs for this query"** before a full
@@ -161,7 +165,8 @@ Detection Eng, Cloud Sec — see README variants) to guide resume-tailor.
   clicks submit. No fully-autonomous submit path exists in v1.
 - **Per-job logging:** the moment the human acts (or skips), the `outcome`/`applied_at`
   is written to the store — so progress is never lost.
-- **ToS / account-flag risk:** automated interaction with LinkedIn/Naukri can violate
+- **ToS / account-flag risk:** automated interaction with LinkedIn/Wellfound (the two
+  Apify-backed portals — `naukri.py`/`indeed.py` removed 2026-08-23, §9) can violate
   ToS. Mitigations: human gate, **conservative rate limits** (small batches, delays
   between actions), use of the **user's own logged-in browser session** (no credential
   storage beyond the session), and honoring portal robots/anti-bot signals. Do not
@@ -205,6 +210,9 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done (review + test passed).
 - [x] Apify adapter: LinkedIn (`curious_coder/linkedin-jobs-scraper`) — live-verified, 100% field coverage incl. jd_text
 - [x] Apify adapter: Naukri (`muhammetakkurtt/naukri-job-scraper`) — live-verified; nested `jobDetails`, searchUrl for location
 - [x] Apify adapter: Indeed (`borderline/indeed-scraper`) — live-verified; dict location flattened, `datePublished`
+  **(`naukri.py`/`indeed.py` both removed 2026-08-23 — owner request to drop Apify
+  dependency everywhere except LinkedIn; see §9 2026-08-23. Entries above kept as
+  historical record.)**
 - [x] Custom-plugin scaffold (`plugins/_custom_template.py`, Playwright-session template)
 - [x] Multi-key Apify rotation + health indicator (`plugins/_apify_keys.py`; `run_actor` rotates by health, `scrape.py --keys`/`--reset-keys`). Review+test loop PASSED. code-tester 25/25 (incl. secret-safety); code-reviewer PASS, 2 MAJOR fixed (tightened `classify_error` so rate-limit/timeout/`token_count` no longer dead-key all keys; 429→transient; scrub token from persisted `last_error`) + 403-permission→invalid + redundant-guard comments.
 - [x] SKILL.md + normalize/store wiring (`scripts/scrape.py`)
@@ -507,6 +515,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done (review + test passed).
   cost); the original Apify actor (`borderline/indeed-scraper`) is kept as an automatic
   fallback when the browser path is unconfigured/blocked/empty. Toggles:
   `INDEED_USE_BROWSER`, `INDEED_APIFY_FALLBACK` (both default on). See §9 2026-07-10.
+  **`plugins/indeed.py` removed 2026-08-23** (owner request to drop Apify dependency
+  everywhere except LinkedIn; see §9 2026-08-23) — entry kept as historical record.
 - [x] **Cutshort** — built 2026-07-07 as a Tier-1 JSON-embedded-in-HTML ATS-platform plugin
   (`cutshort.py`), NOT Playwright/session as originally predicted here — see Phase 11 below.
 
@@ -1670,6 +1680,40 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   once"); `--plugin-timeout` deliberately left at 180s — owner declined lowering it,
   since cutshort/oraclefusion run ~230–250s per combo and would start timing out at 90s.
   `scrape.py --workers 0` now means auto (was: invalid, `< 1` rejected).
+- 2026-08-23 — llm provider — grok/Groq model id (`main.py` `GROQ_MODEL`) —
+  `llama-3.3-70b-versatile` → **`openai/gpt-oss-120b`**. Root cause of "grok api not
+  working": Groq deprecated `llama-3.3-70b-versatile` (and `llama-3.1-8b-instant`) for
+  free/developer-tier accounts on 2026-06-17, so every probe 404'd
+  (`model_not_found`); `openai/gpt-oss-120b` is Groq's own documented replacement.
+  Also rotated `XAI_API_KEY_1` in `.env` (previous key had gone `invalid`/401; owner
+  supplied a fresh `gsk_…` key). Live-verified post-fix: `main.py keys --llm` shows
+  `grok ok`, key pool key `[1]` → `healthy`. [§9 prior entries: `python` removed from
+  ranking, not this]
+- 2026-08-23 — job-scraper — Apify-dependent plugins — **`plugins/naukri.py` and
+  `plugins/indeed.py` REMOVED entirely** (`git rm`); `plugins/wellfound.py` kept
+  unchanged (Apify-primary + session-based fallback, no stripping); `plugins/linkedin.py`
+  kept unchanged (Apify is its sole mechanism, explicitly excepted). Owner request:
+  "Except for linked in, remove everything that depends on Appify, naukri, indded and
+  etc" — clarified via a full Apify-dependency inventory presented back to the owner
+  (linkedin=sole, naukri=sole, indeed=fallback-only, wellfound=primary+fallback), then
+  scoped by the owner's own words: "lets keep wellfoupnd and remove naukria nd indeed."
+  Shared Apify helpers `plugins/_apify.py`/`plugins/_apify_keys.py` kept (still used by
+  linkedin.py + wellfound.py). Swept every reference repo-wide: `main.py` (`--source`
+  help), `.claude/skills/job-scraper/scripts/scrape.py` (`--source` help),
+  `completions/main.py.bash` (`--source` completions — also fixed an unrelated stale
+  `python` `rank --llm` completion left over from an earlier session), `data/schema.sql`
+  (comment), `.env`/`.env.example` (Apify section + actor overrides — dropped
+  `APIFY_ACTOR_NAUKRI`/`APIFY_ACTOR_INDEED`/`INDEED_USE_BROWSER`/`INDEED_APIFY_FALLBACK`),
+  `requirements.txt` (comment), `.github/workflows/scrape.yml` (2 comments),
+  `docs/joblisters.md` (dropped the Naukri/Indeed rows, added a removal note),
+  `.claude/CLAUDE.md` ("What this project is"), `.claude/skills/job-scraper/SKILL.md`
+  (description, Apify-backed portals list, chosen-actors table, safety/cost notes,
+  extensibility guidance — new Apify-backed portals now need explicit owner sign-off,
+  per this decision, before being added), and this file (§0, §2, §4, §6, §8 historical
+  entries annotated in place, §10). Live portal count: 39 → 37 (LinkedIn + Wellfound via
+  Apify, ~35 token-free). [revises the 2026-06-30 "v1 portals — LinkedIn, Naukri,
+  Indeed" entry and the 2026-07-10 "Indeed reworked to browser-first" entry — both
+  superseded, Indeed no longer exists as a plugin at all]
 
 ---
 
@@ -1723,8 +1767,9 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
     to unlock real server-rendered rows on the SAME endpoint. Each plugin returns normalized
     `Job`s with the **job-detail link in `Job.url`** (NOT the apply-button link).
   - **Aggregators** (one plugin = many companies), via Apify or public API: **Foundit/Monster,
-    Instahyre, Hirist, Internshala** (like the existing Naukri plugin). **Wellfound BUILT
-    2026-07-10** (`plugins/wellfound.py`, Apify-primary + session-fallback — see §9 2026-07-10).
+    Instahyre, Hirist, Internshala** (like the now-removed Naukri plugin — `naukri.py` was
+    dropped 2026-08-23, owner request, see §9). **Wellfound BUILT 2026-07-10**
+    (`plugins/wellfound.py`, Apify-primary + session-fallback — see §9 2026-07-10).
   - **Owner's 7 sites — RESOLVED 2026-07-05, 2 more resolved 2026-07-07 (Wave 2):**
     Qualcomm→Eightfold (still blocked, see above), Simbian→Zoho Recruit (confirmed,
     deferred/OAuth), cyber-times.in/jobs→**OFFLINE** (impersonation probe, skipped),

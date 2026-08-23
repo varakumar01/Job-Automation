@@ -1,7 +1,7 @@
 # AI Job-Search & Auto-Apply — Python dependencies
 # Install:  pip install -r requirements.txt  &&  playwright install chromium
 
-apify-client>=1.7        # managed scraping (LinkedIn / Naukri / Indeed actors)
+apify-client>=1.7        # managed scraping (LinkedIn's sole mechanism + Wellfound's primary tier)
 playwright>=1.45         # browser automation for custom scrapers + apply-agent
 python-dotenv>=1.0       # load secrets from .env
 requests>=2.31           # Apify REST fallback + lightweight web fetches

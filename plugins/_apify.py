@@ -2,7 +2,11 @@
 
 Leading underscore → the registry skips this module during plugin discovery
 (see registry.py ``_SKIP`` / underscore rule), so it is a pure helper, never a
-plugin. Both ``linkedin.py``, ``naukri.py`` and ``indeed.py`` import from here.
+plugin. ``linkedin.py`` (sole mechanism) and ``wellfound.py`` (primary tier, with a
+session-based fallback) import from here — the only two portals still Apify-backed
+after ``naukri.py``/``indeed.py`` were removed 2026-08-23 (owner request: cut Apify
+dependency everywhere except LinkedIn; Wellfound kept as-is since it has no other
+usable fetch path — see PLAN.md §9).
 
 Cost control: every adapter passes its ``limit`` into the actor's own count
 field (``count`` / ``maxRows`` / ``maxJobs``) so the actor only *produces* what

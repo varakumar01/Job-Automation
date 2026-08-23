@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS jobs (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    source               TEXT    NOT NULL,            -- portal: linkedin/naukri/indeed/...
+    source               TEXT    NOT NULL,            -- portal: linkedin/wellfound/greenhouse/...
     ext_id               TEXT    NOT NULL,            -- portal's job id
     url                  TEXT,
     title                TEXT,

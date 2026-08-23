@@ -54,17 +54,17 @@ _jobsearch_main_py() {
     fi
 
     # Value completions for known enum flags. --llm differs by command: rank also allows
-    # `python` (the deterministic matcher); prep does not.
+    # `auto` (whichever provider is live right now); prep does not.
     case "$prev" in
         --llm)
             if [[ "$cmd" == "rank" ]]; then
-                COMPREPLY=( $(compgen -W "python grok deepseek api" -- "$cur") )
+                COMPREPLY=( $(compgen -W "auto nvidia grok deepseek api" -- "$cur") )
             else
-                COMPREPLY=( $(compgen -W "claude grok deepseek api" -- "$cur") )
+                COMPREPLY=( $(compgen -W "claude nvidia grok deepseek api" -- "$cur") )
             fi
             return 0 ;;
         --outcome) COMPREPLY=( $(compgen -W "applied skipped failed" -- "$cur") ); return 0 ;;
-        --source)  COMPREPLY=( $(compgen -W "linkedin naukri indeed" -- "$cur") ); return 0 ;;
+        --source)  COMPREPLY=( $(compgen -W "linkedin wellfound" -- "$cur") ); return 0 ;;
     esac
 
     # Otherwise complete this command's flags.

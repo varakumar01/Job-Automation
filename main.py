@@ -62,8 +62,11 @@ APPLICATIONS_DIR = ROOT / "applications"
 
 # Groq (the user's key is a gsk_ Groq key — OpenAI-compatible). xAI proper would be
 # https://api.x.ai/v1 + a grok-* model; override with .env if you have a real xAI key.
+# llama-3.3-70b-versatile (the prior default here) was deprecated by Groq on 2026-06-17
+# (email notice; free/developer tier only) — probes started failing with a 404
+# model_not_found. openai/gpt-oss-120b is Groq's own suggested replacement for it.
 GROQ_BASE = "https://api.groq.com/openai/v1"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "openai/gpt-oss-120b"
 
 # DeepSeek — OpenAI-compatible, no free-tier TPM wall (concurrency-based), very cheap.
 # Reuses the `grok` provider path with a different base/key/model. Needs DEEPSEEK_API_KEY.
@@ -904,7 +907,7 @@ def main(argv=None) -> int:
     p.add_argument("--limit", type=int, default=30,
                    help="max results per plugin per query×location combo (default: %(default)s)")
     p.add_argument("--source", default="all",
-                   help="portal plugin name (linkedin/naukri/indeed/remoteok/...) or 'all' "
+                   help="portal plugin name (linkedin/wellfound/remoteok/...) or 'all' "
                         "to run every available plugin (default: %(default)s)")
     p.add_argument("--workers", type=int, default=0,
                    help="max plugins fetched in parallel; 0 (default) = auto, one worker per "

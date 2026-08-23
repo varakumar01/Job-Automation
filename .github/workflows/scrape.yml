@@ -6,8 +6,9 @@ name: Scheduled scrape
 # manual step. This workflow itself never touches Netlify or any secret beyond
 # what scraping needs.
 #
-# Cost note: every ~39 free plugins (RSS/JSON/HTML, no token) run for free on
-# every trigger. Apify-backed portals (linkedin/naukri/indeed/wellfound) only
+# Cost note: every ~35 free plugins (RSS/JSON/HTML, no token) run for free on
+# every trigger. The two Apify-backed portals (linkedin/wellfound — naukri.py
+# and indeed.py were removed 2026-08-23, owner request, see PLAN.md §9) only
 # run — and only bill — if you add an APIFY_TOKEN repo secret; leave it unset
 # to keep this workflow entirely free. The existing APIFY_MAX_CHARGE_USD safety
 # net (default $0.50/run, see .env.example) still applies here. The cron below
@@ -45,10 +46,10 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      # Enables the browser-based plugins (indeed's primary path, nextgenenergyjobs,
-      # careerhound/wellfound's session fallback — the latter two still need a real
-      # logged-in PLAYWRIGHT_USER_DATA_DIR this workflow doesn't have, so they stay
-      # unavailable here regardless). Everything else works without this step too.
+      # Enables the browser-based plugins (nextgenenergyjobs, careerhound/wellfound's
+      # session fallback — the latter two still need a real logged-in
+      # PLAYWRIGHT_USER_DATA_DIR this workflow doesn't have, so they stay unavailable
+      # here regardless). Everything else works without this step too.
       - name: Install Playwright Chromium
         run: playwright install --with-deps chromium
 
