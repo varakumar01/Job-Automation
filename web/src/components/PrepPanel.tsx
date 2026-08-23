@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { ArrowClockwise, Sparkle } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,9 +19,9 @@ const LLM_OPTIONS = [
 
 const SELECTION_OPTIONS: Array<{ value: PrepParams['selection']; label: string }> = [
   { value: 'pending', label: 'All pending' },
-  { value: 'eligible', label: '✅ Eligible (best match, master résumé as-is)' },
-  { value: 'needs_mod', label: '✏️ Needs résumé modification' },
-  { value: 'stretch', label: '🧗 Stretch (low-fit, heavy rewrite)' },
+  { value: 'eligible', label: 'Eligible (best match, master résumé as-is)' },
+  { value: 'needs_mod', label: 'Needs résumé modification' },
+  { value: 'stretch', label: 'Stretch (low-fit, heavy rewrite)' },
   { value: 'llm_best', label: "LLM reranker's best picks (needs Rank --save first)" },
   { value: 'jobs', label: 'Specific job ids' },
 ]
@@ -32,6 +32,10 @@ interface PrepPanelProps {
 }
 
 export function PrepPanel({ running, run }: PrepPanelProps) {
+  const llmId = useId()
+  const selectionId = useId()
+  const jobsId = useId()
+  const limitId = useId()
   const [llm, setLlm] = useState('claude')
   const [selection, setSelection] = useState<PrepParams['selection']>('pending')
   const [jobs, setJobs] = useState('')
@@ -97,7 +101,9 @@ export function PrepPanel({ running, run }: PrepPanelProps) {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <div className="flex items-center gap-1.5">
-            <Label className="text-xs">LLM</Label>
+            <Label htmlFor={llmId} className="text-xs">
+              LLM
+            </Label>
             <button
               type="button"
               onClick={() => refreshHealth(true)}
@@ -109,7 +115,7 @@ export function PrepPanel({ running, run }: PrepPanelProps) {
             </button>
           </div>
           <Select value={llm} onValueChange={(val) => setLlm(val ?? 'claude')}>
-            <SelectTrigger className="h-9 w-full text-sm">
+            <SelectTrigger id={llmId} className="h-9 w-full text-sm">
               {/* base-ui's Select.Value shows the raw value by default, not the
                   matching item's label — map it explicitly. */}
               <SelectValue>
@@ -127,9 +133,11 @@ export function PrepPanel({ running, run }: PrepPanelProps) {
           </Select>
         </div>
         <div>
-          <Label className="text-xs">Job selection</Label>
+          <Label htmlFor={selectionId} className="text-xs">
+            Job selection
+          </Label>
           <Select value={selection} onValueChange={(val) => setSelection((val ?? 'pending') as PrepParams['selection'])}>
-            <SelectTrigger className="h-9 w-full text-sm">
+            <SelectTrigger id={selectionId} className="h-9 w-full text-sm">
               <SelectValue>
                 {(val: string) => SELECTION_OPTIONS.find((o) => o.value === val)?.label ?? val}
               </SelectValue>
@@ -145,8 +153,11 @@ export function PrepPanel({ running, run }: PrepPanelProps) {
         </div>
         {selection === 'jobs' && (
           <div>
-            <Label className="text-xs">Job ids (comma-separated)</Label>
+            <Label htmlFor={jobsId} className="text-xs">
+              Job ids (comma-separated)
+            </Label>
             <Input
+              id={jobsId}
               value={jobs}
               onChange={(e) => setJobs(e.target.value)}
               placeholder="12, 47, 103"
@@ -157,8 +168,11 @@ export function PrepPanel({ running, run }: PrepPanelProps) {
           </div>
         )}
         <div>
-          <Label className="text-xs">Limit (optional)</Label>
+          <Label htmlFor={limitId} className="text-xs">
+            Limit (optional)
+          </Label>
           <Input
+            id={limitId}
             type="number"
             value={limit}
             onChange={(e) => setLimit(e.target.value)}

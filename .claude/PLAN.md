@@ -680,6 +680,37 @@ realtime SSE, faster defaults (owner request 2026-08-23)**
   subagent loop on `server/app.py`/`main.py`/`scrape.py`/`RankPanel.tsx`/
   `PrepPanel.tsx`/`SearchPanel.tsx`/`api.ts`/`useLlmProviders.ts` next session if that
   policy isn't in effect then.
+- [~] **UI/UX audit fixes** (owner-requested behavioral/psychology audit, then
+  "lets implement" — branch `ui-ux-audit-fixes`, see §9 2026-08-23 for the full
+  element-level decision list). All 15 audit findings + the public-build section
+  implemented: recency/age on cards + frontend-only `posted_at` parsing
+  (`lib/jobView.ts`), sort/filter/source/dedupe strip (`JobFilterBar.tsx`,
+  `ResultsTiers.tsx`), progressive rendering + content-visibility to fix the
+  1.4s tab-switch freeze (`JobsList.tsx`), score accent + suppressed
+  100%-true badges (`ScoreMeter.tsx`), Skip/Failed relabeled + spaced,
+  per-card "Prep this job" action, whole-card-clickable pattern, collapsed
+  `SourceReport.tsx`, wired Stop button + run progress
+  (`usePipelineRunner.ts`, `RunProgress.tsx`, `CmdPanel.tsx`), inline
+  backend-unreachable banner + `ErrorBoundary.tsx`, label-association fixes
+  across `RankPanel.tsx`/`PrepPanel.tsx`/`AdvancedOptions.tsx`, `/`+`1`/`2`/`3`
+  hotkeys (`useHotkeys.ts`), and the public dashboard fixes (`readOnly` +
+  no-`tier` on `StaticApp.tsx`'s `JobsList`, "last updated" stamp, explainer
+  copy). `tsc -b` and `oxlint` both clean; `npm run build` and `npm run
+  build:static` both succeed. **code-reviewer round complete** — 7 findings
+  (1 MAJOR, 4 MINOR, 2 NIT), all fixed (see §9 2026-08-23). **code-tester
+  rounds complete**: static public build 13/13 PASS; control panel (dynamic)
+  9 PASS / 2 FAIL, both defects fixed same day (sources-panel-vanishes-after-
+  outage MAJOR, tier-switch-timing MINOR — see §9 2026-08-23). Résumé-editor
+  compile button repositioned per separate owner request (§9 2026-08-23,
+  stayed inside `AdvancedOptions.tsx`, no new panel). All builds re-verified
+  green after every fix. **Second round on the 3 latest fixes (sources+Retry,
+  useTransition tab-switch, résumé-button reposition)**: code-reviewer 2 MINOR
+  + 1 NIT, all fixed (ARIA `role="status"` moved out of `TabsList`'s
+  `tablist`, `aria-live="polite"` added to the résumé compile-error span,
+  no-op `truncate` class removed — see §9 2026-08-23); code-tester live
+  re-verification **6/6 PASS**, no defects. All builds re-verified green.
+  **Master not touched**; do not merge `ui-ux-audit-fixes` until the owner
+  explicitly says to finalize.
 
 ---
 
@@ -1714,6 +1745,133 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
   Apify, ~35 token-free). [revises the 2026-06-30 "v1 portals — LinkedIn, Naukri,
   Indeed" entry and the 2026-07-10 "Indeed reworked to browser-first" entry — both
   superseded, Indeed no longer exists as a plugin at all]
+- 2026-08-23 — control panel + static dashboard — UI/UX audit implementation —
+  owner asked for a behavioral-psychology UX audit of the running app
+  (`http://localhost:5178/`), approved scope "written audit + public GitHub Pages
+  build both matter" + "add one accent hue, keep the rest monochrome", then said
+  "lets implement and lets create a new branch and implement and later merge that
+  branch in the master branch upon finilising." Full audit + fix plan:
+  `~/.claude/plans/consider-your-an-expert-delegated-fountain.md` (15 findings,
+  3 tiers). Implemented on branch `ui-ux-audit-fixes` — **master untouched**,
+  merge deferred until the owner explicitly says to finalize. Element-level
+  decisions:
+  - **Accent tokens**: added `--brand`/`--brand-foreground` (plus pre-existing
+    `--success`/`--warning` reused) to `web/src/index.css` `:root`/`.dark` —
+    reserved for exactly three uses: match-score meter fill (`ScoreMeter.tsx`),
+    running/progress indicator (`CmdPanel.tsx`), and outcome-only encodings
+    (`success` = applied, `warning` = stale posting / unavailable source). No
+    other hardcoded colors were introduced; the rest of the UI stays greyscale.
+  - **`posted_at` recency**: fixed **frontend-only** (`lib/jobView.ts`
+    `formatAge`/`isStale`, defensive multi-format parsing) — no backend
+    normalization migration. The five raw formats coming from plugins
+    (`2026-08-02`, ISO datetime, `"30+ days ago"`, `"August 4, 2026"`, RFC-2822)
+    are parsed defensively per-render rather than normalized at ingest. Revisit
+    if a future backend pass touches `data/store.export_public_json` anyway.
+  - **Dedup**: presentational-only, client-side (`lib/jobView.ts`
+    `dedupeJobs`) — groups by normalized title+company+location, never merges
+    or deletes server rows. No backend `canon_key` column added; store
+    uniqueness (`source`, `ext_id`) and per-row applied/skipped/failed history
+    stay untouched. Deferred: a real backend dedup key, if duplicate volume
+    grows enough to matter beyond presentation.
+  - **List performance**: content-visibility CSS
+    (`[content-visibility:auto]` + `contain-intrinsic-size`) + a 40-item
+    "show more" page size in `JobsList.tsx`, not `@tanstack/react-virtual` —
+    keeps native in-page Ctrl+F on a bounded local-first list, avoids a new
+    dependency.
+  - **Score accent scope**: top-decile highlighting is the 90th percentile of
+    *that specific rendered list's own* `match_score` distribution (computed
+    per `JobsList` render), not an absolute score constant — so "top tier"
+    means something consistent whether the visible tab is Eligible or Stretch.
+  - **Undo on Skip/Failed**: deferred. No backend status-revert endpoint
+    exists — `/api/log` writes an outcome and advances the pipeline status
+    forward; there is no reverse operation to wire a toast "Undo" action to.
+    Would need a new backend endpoint if the owner wants this later.
+  - **Shared `AppHeader` extraction** (`App.tsx` vs `StaticApp.tsx` duplicated
+    header): deferred as cosmetic-only, no user-visible behavior change either
+    way.
+  - **Public dashboard (`StaticApp.tsx`)**: passes `readOnly` and omits `tier`
+    to `JobsList` — this simultaneously suppresses the action-button cluster +
+    `ResumeTag` (via `readOnly`) and produces no status badge for `status:
+    "matched"` jobs (via `tier` being `undefined`, so `computeGate`'s
+    `isEligibleAsIs` is false and `STATUS_BADGE['matched']` doesn't exist) —
+    eliminates the disabled-dead-button + mislabeled-badge problem the audit
+    flagged, with no new prop needed beyond `readOnly`. Added a "last updated"
+    stamp from the max `updated_at` across jobs (field already present on every
+    row via `SELECT *`/`_PUBLIC_FIELDS` — no backend change needed) and an
+    explainer paragraph for a first-time visitor.
+  - **oxlint `react-hooks/exhaustive-deps` on `lib/settings.ts`**: fixed by
+    capturing `serialize` in a `useRef` updated every render rather than
+    adding it to the `useCallback` dep array or reaching for a disable-comment
+    — keeps `set`'s identity stable across renders (keyed only on `key`) while
+    always calling the latest `serialize` closure, and the lint rule has
+    nothing left to flag. Directive-comment forms
+    (`eslint-disable-next-line`/`oxlint-disable-next-line`, with or without a
+    rule name, in parens or slash form) were all tried first and did not
+    suppress the warning even when placed on the exact flagged line — avoid
+    relying on oxlint disable-comments for this rule going forward; prefer a
+    ref-stabilized closure instead.
+  - **code-tester round on control panel (dynamic) — 9 PASS / 2 FAIL.** Full
+    pass on: outage banner + Retry (finding 10), accessibility labels +
+    hotkeys incl. digit-in-field exception (finding 15), single tab-stop per
+    card (finding 7), Advanced modal/theme/mobile regression, Stop-button
+    cancellation (finding 9). Two defects found and fixed same day:
+    - **DEFECT (MAJOR) — `SourceReport` permanently blank after a backend
+      outage, even after a successful Retry.** `App.tsx`'s `api.sources()` was
+      a separate `.catch(() => {})` fetch, not part of `refreshResults`/
+      `loadError`, so it never re-ran on Retry — reintroducing finding 10's
+      exact failure mode for the whole sources panel. Fixed by folding
+      `api.sources()` into the same `Promise.all` as `api.lists()`/
+      `api.stats()` in `refreshResults` (`App.tsx`) — one fetch group, one
+      error/retry path, sources included.
+    - **DEFECT (MINOR) — tier-switch timing borderline (301–445ms across 6
+      trials vs the ~400ms target) with no click-acknowledgment affordance.**
+      Node count improved 9,237→1,740 (progressive rendering already works);
+      the remaining gap was the *feel* of the wait, not just its length.
+      Fixed by wrapping the tab-switch state update in `useTransition`
+      (`ResultsTiers.tsx`) — `isPending` flips synchronously (well under
+      100ms) and renders an explicit `role="status"` "switching…" indicator
+      next to the tab list, and the heavy re-render itself runs as a
+      deprioritized transition so it never blocks the click/paint. Wired both
+      the `Tabs onValueChange` handler and the `1`/`2`/`3` hotkey path
+      (`useHotkeys`'s `onSelectTab`) through the same `startTransition`.
+- **2026-08-23 — résumé editor — button placement.** Owner asked to compile
+  the just-edited `varakumar_resume.tex` and "add option to compile it via
+  UI." Investigated first: a compile-via-UI feature already existed
+  (`AdvancedOptions.tsx` → Résumé tab → `ResumeTab`, backed by
+  `server/app.py`'s `POST /api/resume`, which writes the `.tex` and runs
+  `tectonic`) — verified end-to-end, not rebuilt. Initially extracted
+  `ResumeTab` into a new standalone top-level `ResumePanel.tsx` per an
+  early reading of "move the button to the top"; owner corrected this
+  ("just place back the resume where it was, i just said just move the
+  compile button to the top") — **reverted the extraction**, `ResumeTab`
+  stays inside `AdvancedOptions.tsx`'s Résumé tab. The only lasting change:
+  the "Save + compile" button now sits above the textarea/iframe two-pane
+  layout (`AdvancedOptions.tsx` `ResumeTab`), not below a 96-row textarea,
+  since pasting a whole `.tex` file and compiling immediately is the primary
+  flow, not a scroll-to-bottom afterthought.
+- **2026-08-23 — UI/UX audit — second review round on the 3 latest fixes.**
+  code-reviewer targeted at `App.tsx` (sources+Retry fix), `ResultsTiers.tsx`
+  (`useTransition` tab-switch) and `AdvancedOptions.tsx` (résumé-button
+  reposition) — PASS overall, 2 MINOR + 1 NIT, all fixed same day:
+  - MINOR: the `role="status"` "switching…" indicator was rendered as a
+    direct child of `TabsList` — invalid, since Base UI renders `TabsList`
+    with `role="tablist"`, which per the ARIA spec may only contain
+    `role="tab"` children. Fixed by making the indicator a sibling of
+    `TabsList` inside a wrapping flex div instead.
+  - MINOR: the new résumé compile-error span at the top of `ResumeTab` had no
+    `aria-live`, so a screen-reader user would get no announcement of a
+    failed compile. Fixed by adding `role="status" aria-live="polite"`.
+  - NIT: that same span carried a `truncate` class that was a no-op on its
+    fixed short string. Removed.
+  code-tester live re-verification (Chrome DevTools MCP against the running
+  app, backend kill/restart included) — **6/6 PASS, 0 defects**: sources
+  line recovers in the same Retry click after an outage
+  (`"36/37 sources OK · 1 issue"` before/after, banner gone, no page
+  reload); "switching…" `role="status"` appears at t≈27ms and clears by
+  t≈382ms on the 342-card tier switch; the `2` hotkey still drives the same
+  transition path; résumé "Save + compile" confirmed above the
+  textarea/PDF pair in DOM and screenshot; full-tab regression clean (no
+  new console errors, all 3 tiers render distinct correct content).
 
 ---
 

@@ -123,9 +123,12 @@ function EnvTab() {
         return (
           <div key={key} className="grid grid-cols-[1fr_auto] items-center gap-2">
             <div>
-              <Label className="font-mono text-xs">{key}</Label>
+              <Label htmlFor={`env-${key}`} className="font-mono text-xs">
+                {key}
+              </Label>
               <div className="flex items-center gap-2">
                 <Input
+                  id={`env-${key}`}
                   placeholder={!entry.set ? '(not set)' : entry.value || '(set, but empty)'}
                   value={value}
                   onChange={(e) => setEdits((prev) => ({ ...prev, [key]: e.target.value }))}
@@ -276,11 +279,15 @@ function ProfileTab() {
       <div className="grid grid-cols-2 gap-3">
         {PROFILE_FIELDS.map(({ key, label, type }) => {
           const error = touched ? fieldErrors[key] : null
+          const fieldId = `profile-${key}`
           return (
             <div key={key} className={type === 'checkbox' ? 'flex items-center gap-2' : ''}>
-              <Label className="text-xs">{label}</Label>
+              <Label htmlFor={fieldId} className="text-xs">
+                {label}
+              </Label>
               {type === 'checkbox' ? (
                 <input
+                  id={fieldId}
                   type="checkbox"
                   checked={Boolean(profile[key])}
                   onChange={(e) => setField(key, e.target.checked)}
@@ -288,6 +295,7 @@ function ProfileTab() {
               ) : (
                 <>
                   <Input
+                    id={fieldId}
                     value={(profile[key] as string) ?? ''}
                     onChange={(e) => setField(key, e.target.value)}
                     className="h-8 text-xs"
@@ -301,8 +309,11 @@ function ProfileTab() {
         })}
       </div>
       <div>
-        <Label className="text-xs">Preferred locations (comma-separated)</Label>
+        <Label htmlFor="profile-preferred_locations" className="text-xs">
+          Preferred locations (comma-separated)
+        </Label>
         <Input
+          id="profile-preferred_locations"
           value={
             Array.isArray(profile.preferred_locations)
               ? (profile.preferred_locations as string[]).join(', ')
@@ -368,43 +379,57 @@ function ResumeTab() {
   if (loading) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>
 
   return (
-    <div className="flex flex-col gap-2 p-1 lg:flex-row">
+    <div className="flex flex-col gap-2 p-1">
+      {/* Compile button pinned above the editor, not buried below a
+          96-row textarea (owner request 2026-08-23: "move the button to
+          the top ... Ill be just pasting the tex code anyway" — pasting a
+          whole master résumé and compiling immediately is the primary flow
+          here, not a bottom-of-scroll afterthought). */}
+      <div className="flex items-center justify-between gap-2">
+        <Button size="sm" onClick={compile} disabled={compiling}>
+          <FloppyDisk className="size-4" />
+          {compiling ? 'Compiling…' : 'Save + compile'}
+        </Button>
+        {compileError && (
+          <span role="status" aria-live="polite" className="text-[11px] text-destructive">
+            compile failed — see error below
+          </span>
+        )}
+      </div>
       {/* min-w-0 is load-bearing: a flex-1 child's default min-width is its
           content's intrinsic size, and the .tex source has long unbroken
           comment-divider lines — without this, the editor column claims
           nearly all the row and squeezes the PDF preview to a couple of
           pixels (found live: iframe width=2 vs textarea width=668). */}
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <Textarea
-          value={tex}
-          onChange={(e) => setTex(e.target.value)}
-          className="min-h-96 font-mono text-xs"
-          spellCheck={false}
-        />
-        <Button size="sm" onClick={compile} disabled={compiling} className="self-end">
-          <FloppyDisk className="size-4" />
-          {compiling ? 'Compiling…' : 'Save + compile'}
-        </Button>
-        {compileError && (
-          <pre className="max-h-32 overflow-y-auto rounded border border-destructive/40 bg-destructive/5 p-2 text-[11px] text-destructive">
-            {compileError}
-          </pre>
-        )}
-      </div>
-      <Separator orientation="vertical" className="hidden lg:block" />
-      <div className="min-w-0 flex-1">
-        {pdfExists ? (
-          <iframe
-            key={pdfNonce}
-            title="Résumé preview"
-            src={`${api.resumePdfUrl()}?v=${pdfNonce}`}
-            className="h-96 w-full rounded border"
+      <div className="flex min-w-0 flex-1 flex-col gap-2 lg:flex-row">
+        <div className="min-w-0 flex-1">
+          <Textarea
+            value={tex}
+            onChange={(e) => setTex(e.target.value)}
+            className="min-h-96 font-mono text-xs"
+            spellCheck={false}
           />
-        ) : (
-          <div className="flex h-96 items-center justify-center rounded border border-dashed text-sm text-muted-foreground">
-            No compiled PDF yet — save to compile.
-          </div>
-        )}
+          {compileError && (
+            <pre className="mt-2 max-h-32 overflow-y-auto rounded border border-destructive/40 bg-destructive/5 p-2 text-[11px] text-destructive">
+              {compileError}
+            </pre>
+          )}
+        </div>
+        <Separator orientation="vertical" className="hidden lg:block" />
+        <div className="min-w-0 flex-1">
+          {pdfExists ? (
+            <iframe
+              key={pdfNonce}
+              title="Résumé preview"
+              src={`${api.resumePdfUrl()}?v=${pdfNonce}`}
+              className="h-96 w-full rounded border"
+            />
+          ) : (
+            <div className="flex h-96 items-center justify-center rounded border border-dashed text-sm text-muted-foreground">
+              No compiled PDF yet — save to compile.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

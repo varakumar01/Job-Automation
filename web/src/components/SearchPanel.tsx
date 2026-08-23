@@ -41,7 +41,7 @@ export function SearchPanel({ sources, running, run }: SearchPanelProps) {
 
   return (
     <div className="flex w-full flex-col items-center gap-4">
-      <div className="flex w-full max-w-3xl items-start gap-3">
+      <div className="flex w-full max-w-3xl flex-col items-stretch gap-3 sm:flex-row sm:items-start">
         <div className="min-w-0 flex-1">
           <div className="relative">
             <MagnifyingGlass className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
@@ -49,6 +49,7 @@ export function SearchPanel({ sources, running, run }: SearchPanelProps) {
               value={queries}
               onChange={(e) => setQueries(e.target.value)}
               placeholder="security engineer, detection engineer, …"
+              aria-label="Search queries, comma-separated"
               className="h-14 w-full pl-11 text-base"
               aria-invalid={touched && !!errors.queries}
               onKeyDown={(e) => e.key === 'Enter' && runSearch()}
@@ -62,15 +63,16 @@ export function SearchPanel({ sources, running, run }: SearchPanelProps) {
         </Button>
       </div>
 
-      <div className="flex w-full max-w-3xl flex-wrap items-start justify-center gap-2.5">
+      <div className="flex w-full max-w-3xl flex-col items-stretch gap-2.5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-center">
         <Input
           value={locations}
           onChange={(e) => setLocations(e.target.value)}
           placeholder="locations (blank = no filter)"
-          className="h-9 w-60 text-sm"
+          aria-label="Locations, comma-separated"
+          className="h-9 w-full text-sm sm:w-60"
         />
         <Select value={source} onValueChange={(val) => setSource(val ?? 'all')}>
-          <SelectTrigger className="h-9 w-40 text-sm">
+          <SelectTrigger className="h-9 w-full text-sm sm:w-40">
             {/* base-ui's Select.Value shows the raw value by default, not the
                 matching item's label ("all" vs "all sources") — map it explicitly. */}
             <SelectValue>{(val: string) => (val === 'all' ? 'all sources' : val)}</SelectValue>
@@ -84,22 +86,27 @@ export function SearchPanel({ sources, running, run }: SearchPanelProps) {
             ))}
           </SelectContent>
         </Select>
-        <NumberField label="days" value={days} onChange={setDays} error={touched ? errors.days : null} />
-        <NumberField label="limit" value={limit} onChange={setLimit} error={touched ? errors.limit : null} />
-        <NumberField
-          label="workers"
-          title="Number of job sources fetched in parallel (multi-threaded). 0 = auto: one worker per available plugin — fastest, all sources at once"
-          value={workers}
-          onChange={setWorkers}
-          error={touched ? errors.workers : null}
-        />
-        <label
-          className="flex items-center gap-1.5 text-xs text-muted-foreground"
-          title="Re-evaluate jobs currently at 'rejected' instead of leaving them untouched (e.g. after an eligibility rule change)"
-        >
-          <input type="checkbox" checked={recheck} onChange={(e) => setRecheck(e.target.checked)} />
-          recheck rejected
-        </label>
+        {/* Grouped so these stay together and wrap as a unit on narrow
+            screens instead of each field landing on its own ragged row
+            (finding 13 — measured live at 390px). */}
+        <div className="flex flex-wrap items-start justify-center gap-2.5">
+          <NumberField label="days" value={days} onChange={setDays} error={touched ? errors.days : null} />
+          <NumberField label="limit" value={limit} onChange={setLimit} error={touched ? errors.limit : null} />
+          <NumberField
+            label="workers"
+            title="Number of job sources fetched in parallel (multi-threaded). 0 = auto: one worker per available plugin — fastest, all sources at once"
+            value={workers}
+            onChange={setWorkers}
+            error={touched ? errors.workers : null}
+          />
+          <label
+            className="flex items-center gap-1.5 text-xs text-muted-foreground"
+            title="Re-evaluate jobs currently at 'rejected' instead of leaving them untouched (e.g. after an eligibility rule change)"
+          >
+            <input type="checkbox" checked={recheck} onChange={(e) => setRecheck(e.target.checked)} />
+            recheck rejected
+          </label>
+        </div>
       </div>
     </div>
   )

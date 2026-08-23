@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { ArrowClockwise, ChartBar } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,6 +25,8 @@ interface RankPanelProps {
 }
 
 export function RankPanel({ running, run }: RankPanelProps) {
+  const limitId = useId()
+  const llmSelectId = useId()
   const [llm, setLlm] = useState('auto')
   const [llmTouched, setLlmTouched] = useState(false)
   const [limit, setLimit] = useState(20)
@@ -85,7 +87,9 @@ export function RankPanel({ running, run }: RankPanelProps) {
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <div className="flex items-center gap-1.5">
-            <Label className="text-xs">LLM</Label>
+            <Label htmlFor={llmSelectId} className="text-xs">
+              LLM
+            </Label>
             <button
               type="button"
               onClick={() => refreshHealth(true)}
@@ -103,7 +107,7 @@ export function RankPanel({ running, run }: RankPanelProps) {
               setLlm(val ?? 'auto')
             }}
           >
-            <SelectTrigger className="h-9 w-64 text-sm">
+            <SelectTrigger id={llmSelectId} className="h-9 w-64 text-sm">
               <SelectValue>
                 {(val: string) => `${statusGlyph(val)}${LLM_OPTIONS.find((o) => o.value === val)?.label ?? val}`}
               </SelectValue>
@@ -119,8 +123,11 @@ export function RankPanel({ running, run }: RankPanelProps) {
           </Select>
         </div>
         <div>
-          <Label className="text-xs">Shortlist size</Label>
+          <Label htmlFor={limitId} className="text-xs">
+            Shortlist size
+          </Label>
           <Input
+            id={limitId}
             type="number"
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}

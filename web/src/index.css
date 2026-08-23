@@ -39,6 +39,17 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
+    /* The one accent hue in an otherwise achromatic design (see PLAN.md §9
+       2026-08-23 UI audit). Used in exactly three places: the match-score
+       meter fill, the running/progress indicator, and the "prep this job"
+       primary action on non-actionable cards. Everything else stays
+       greyscale — do not reach for --brand as a general "make it pop" color. */
+    --color-brand: var(--brand);
+    --color-brand-foreground: var(--brand-foreground);
+    /* Outcome-only encodings — not general-purpose colors. --success marks a
+       logged 'applied' outcome; --warning marks an unavailable job source. */
+    --color-success: var(--success);
+    --color-warning: var(--warning);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -81,6 +92,10 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    --brand: oklch(0.55 0.16 250);
+    --brand-foreground: oklch(0.985 0 0);
+    --success: oklch(0.58 0.12 155);
+    --warning: oklch(0.68 0.14 75);
 }
 
 .dark {
@@ -115,6 +130,10 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+    --brand: oklch(0.72 0.14 250);
+    --brand-foreground: oklch(0.205 0 0);
+    --success: oklch(0.72 0.11 155);
+    --warning: oklch(0.80 0.12 75);
 }
 
 @layer base {

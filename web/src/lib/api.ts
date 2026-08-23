@@ -16,6 +16,12 @@ export interface Job {
   tailored_resume_path: string | null
   applied_at: string | null
   outcome: string | null
+  // Present on every row (bumped on every write — see data/store.py's
+  // `update_job`) but only actually useful on the public snapshot, where
+  // it's the one available proxy for "how fresh is this dataset" (no
+  // separate export-time manifest field exists — see
+  // `data/store.export_public_json`).
+  updated_at: string | null
 }
 
 export interface Source {
