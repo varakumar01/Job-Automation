@@ -368,10 +368,18 @@ def run(limit: int | None, master_path: Path, ids: list[int] | None = None) -> i
             print(f"  ✗ job {j['id']}: bad model output — {exc}", file=sys.stderr)
             failed += 1
             continue
-        except Exception as exc:  # network/API error: stop cleanly, keep saved work
+        except Exception as exc:
+            # Only abort the rest of the batch for infra errors (rate-limit/auth)
+            # that later jobs would hit too; a one-off 5xx on THIS job's prompt
+            # shouldn't orphan the rest of the queue (PLAN §9 2026-08-23,
+            # job-850 repro — the same pattern applied to understand.py/tailor.py).
             print(f"  ✗ job {j['id']}: API error — {exc}", file=sys.stderr)
             failed += 1
-            break
+            if llm.is_infra_error(exc):
+                print("    infra error (rate-limit/auth/network) — aborting the rest "
+                      "of this run.", file=sys.stderr)
+                break
+            continue
         _store_answers(j["id"], answers)
         done += 1
         print(f"  ✓ job {j['id']}: {(j.get('title') or '')[:40]} → answers saved")

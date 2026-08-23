@@ -129,6 +129,26 @@ class SessionModeError(RuntimeError):
     """Raised when api-only code (``complete``) runs under LLM_PROVIDER=session."""
 
 
+def is_infra_error(exc: Exception) -> bool:
+    """True for failures no retry can fix by trying a different model or a
+    different job — rate limits, auth, dead connections. False (default) for
+    failures plausibly specific to THIS one call (bad JSON, a single 500,
+    content filter) — those are worth continuing past rather than aborting a
+    whole batch. Shared by the backup-model retry below and by skill run
+    loops (jd-understander, resume-tailor, humanise-responder) deciding
+    abort-vs-skip-and-continue on a job's API error. See PLAN §9 2026-08-23
+    for the job-850 5xx repro this classification was written to fix.
+
+    Status codes are matched with \\b word boundaries, not bare substrings
+    (code-reviewer MINOR, 2026-08-23): a 500's error body can legitimately
+    contain a trace/request id like "...14019..." which contains "401" as a
+    substring — that must NOT misclassify a one-off 500 as an infra error and
+    abort a whole batch over it."""
+    msg = str(exc).lower()
+    return bool(re.search(r"\b(429|401|403)\b", msg)) or (
+        "rate-limit" in msg or "unauthorized" in msg or "request failed" in msg)
+
+
 def provider() -> str:
     """Current LLM backend: ``"session"`` (default), ``"api"``, or ``"grok"``."""
     return (os.environ.get("LLM_PROVIDER") or "session").strip().lower()
@@ -166,14 +186,10 @@ def complete(prompt: str, *, system: str = "", max_tokens: int = 2048,
                                   model_id=model_id, temperature=temperature)
         except Exception as exc:
             effective = model_id or model()
-            msg = str(exc).lower()
             # Only retry with the backup for model-specific failures (model not found,
             # content filter, overload). Skip the retry for infrastructure errors that
             # switching models cannot fix — rate limits (429), auth (401/403), and network.
-            _infra_error = ("429" in msg or "rate-limit" in msg or
-                            "401" in msg or "403" in msg or "unauthorized" in msg or
-                            "request failed" in msg)
-            if backup and backup != effective and not _infra_error:
+            if backup and backup != effective and not is_infra_error(exc):
                 print(f"  ⚠ model {effective!r} failed ({type(exc).__name__}); "
                       f"retrying with backup {backup!r}…", file=sys.stderr)
                 return _complete_grok(prompt, system=system, max_tokens=max_tokens,
@@ -317,8 +333,16 @@ def _complete_grok(prompt: str, *, system: str, max_tokens: int,
     # knob must not be able to silently override the model/budget/prompt it sits
     # alongside (code-reviewer MAJOR, 2026-08-23).
     _RESERVED_BODY_KEYS = {"model", "max_tokens", "messages", "temperature"}
+    # Only apply it to the PRIMARY model (model_id is None → caller wants the
+    # configured default). `complete()`'s backup-model retry above is the one
+    # caller that ever passes an explicit `model_id` override, and the backup
+    # (e.g. mistral-nemotron) is a different model that may not accept fields
+    # tuned for the primary (e.g. nemotron-3-super's `chat_template_kwargs`) —
+    # sending them there produced a bare "xAI API error 500" (PLAN §9
+    # 2026-08-23, job 850 repro). A tuning knob for model A must not leak onto
+    # a request explicitly addressed to model B.
     extra_body: dict = {}
-    extra_body_raw = (os.environ.get("LLM_EXTRA_BODY") or "").strip()
+    extra_body_raw = (os.environ.get("LLM_EXTRA_BODY") or "").strip() if model_id is None else ""
     if extra_body_raw:
         try:
             parsed = json.loads(extra_body_raw)

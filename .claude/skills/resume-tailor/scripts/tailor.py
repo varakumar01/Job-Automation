@@ -534,16 +534,22 @@ def run(limit: int | None, master_path: Path, build: bool, threshold: float,
             reused += 1
             print(f"  ↻ job {job['id']} reused {match['variant_id']} → {art}")
             continue
-        # LLM call: a network/API error aborts the batch (every later job would hit it).
+        # LLM call: only abort the rest of the batch for infra errors (rate-limit/
+        # auth) that later jobs would hit too; a one-off 5xx on THIS job's prompt
+        # shouldn't orphan the rest of the queue (PLAN §9 2026-08-23, job-850 repro).
         prompt = _job_prompt(job, brief, parts)
         vprint(2, f"\n  [vv] tailor prompt ({len(prompt)} chars):\n{prompt[:600]}…")
         try:
             reply = llm.complete(prompt, system=SYSTEM_PROMPT, max_tokens=1500)
             vprint(2, f"  [vv] reply: {reply[:400]}…")
-        except Exception as exc:  # network/API error: stop cleanly, keep saved work
+        except Exception as exc:
             print(f"  ✗ job {job['id']}: API error — {exc}", file=sys.stderr)
             failed += 1
-            break
+            if llm.is_infra_error(exc):
+                print("    infra error (rate-limit/auth/network) — aborting the rest "
+                      "of this run.", file=sys.stderr)
+                break
+            continue
         # Parse + build: a bad reply or a build failure skips just THIS job.
         try:
             directives = _normalize_directives(_extract_json(reply))

@@ -299,6 +299,10 @@ def run(limit: int | None, ids: list[int] | None = None) -> int:
     for j in jobs:
         prompt = _build_user_prompt(j)
         vprint(2, f"\n  [vv] understand prompt ({len(prompt)} chars):\n{prompt[:600]}…")
+        # LLM call: only abort the rest of the batch for infra errors (rate-limit/
+        # auth) that later jobs would hit too; a one-off 5xx or content-filter hit
+        # on THIS job shouldn't orphan the rest of the queue (PLAN §9 2026-08-23,
+        # job-850 repro: a single bad request used to kill ~200 pending jobs).
         try:
             reply = llm.complete(prompt, system=SYSTEM_PROMPT, max_tokens=1500)
             vprint(2, f"  [vv] reply: {reply[:400]}…")
@@ -307,10 +311,14 @@ def run(limit: int | None, ids: list[int] | None = None) -> int:
             print(f"  ✗ job {j['id']} ({j.get('title')}): bad model output — {exc}", file=sys.stderr)
             failed += 1
             continue
-        except Exception as exc:  # network/API error: stop cleanly, keep what's saved
+        except Exception as exc:
             print(f"  ✗ job {j['id']}: API error — {exc}", file=sys.stderr)
             failed += 1
-            break
+            if llm.is_infra_error(exc):
+                print("    infra error (rate-limit/auth/network) — aborting the rest "
+                      "of this run.", file=sys.stderr)
+                break
+            continue
         _store_brief(j["id"], brief)  # persist per job → resumable
         done += 1
         print(f"  ✓ job {j['id']}: {(j.get('title') or '')[:40]} → brief stored")

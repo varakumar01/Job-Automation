@@ -1925,6 +1925,43 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
     rest accepted as-is (verdict didn't require them).
   Re-verified live post-fix: nvidia (3/3 clean, no clobbering) and grok
   (2/2 clean, incl. one real tailor pass) both still work end-to-end.
+- 2026-08-23 — jd-understander / resume-tailor / humanise-responder / execution/llm.py —
+  backup-model retry + batch-abort — owner-reported live failure: a `main.py prep` run
+  against `nvidia` stopped after 136/352 jobs — job 258 hit a malformed-JSON reply (model
+  flakiness, self-heals next run — `jd_brief` stays empty so it's retried automatically),
+  job 850 hit a bare "xAI API error 500" right after the automatic `LLM_BACKUP_MODEL`
+  retry, which then killed the entire rest of the batch. Root-caused: (1) `_complete_grok`
+  was merging `LLM_EXTRA_BODY` (the nvidia-only `chat_template_kwargs.enable_thinking`
+  tuning field, see 2026-08-23 entry above) into EVERY request, including the backup-model
+  retry to `mistral-nemotron` — a different model that doesn't accept the field, producing
+  the 500. (2) `understand.py`/`tailor.py`/`respond.py`'s `run()` loops treated ANY
+  exception from `llm.complete()` as fatal (`break`), aborting every remaining job on the
+  theory that "every later job would hit it too" — true for rate-limit/auth, false for a
+  one-off 5xx tied to one job's prompt. Fixes: (a) `_complete_grok` now only applies
+  `LLM_EXTRA_BODY` when `model_id is None` (the primary-model call) — a tuning knob for
+  model A must never leak onto an explicit call to model B. (b) new shared
+  `llm.is_infra_error(exc)` (429/401/403 via word-boundary regex + "rate-limit"/
+  "unauthorized"/"request failed" substrings) replaces the inline check `complete()`'s
+  backup-retry already had; all three skill `run()` loops now call it too: `break` (abort
+  the rest of the run) only for a genuine infra error, else `continue` (skip just this job,
+  keep going). **code-reviewer round 1 — FAIL, 1 MAJOR + 3 MINOR + 1 NIT:** MAJOR —
+  `respond.py` had the identical unconditional-`break` bug but was missed in the first
+  pass; fixed with the same `is_infra_error` gating. MINOR — bare substring match on
+  "429"/"401"/"403" could false-positive on an error body containing those digits
+  incidentally (e.g. a trace id like "...14019..." contains "401"), wrongly aborting a
+  batch over a plain 500; fixed with `\b(429|401|403)\b`. MINOR — comment-placement
+  inconsistency between `understand.py`/`tailor.py`'s near-identical except blocks;
+  normalized both to place the rationale before `try:`. MINOR (no fix needed, accepted) —
+  exit code 1 can now mean "partial success with some skips" rather than "aborted
+  immediately"; summary line + resumable per-job persistence already communicate this.
+  **code-reviewer round 2 — PASS** (all 5 findings re-verified resolved, no regressions).
+  **code-tester — 19/19 PASS across two passes** (unit: `is_infra_error` classification
+  incl. the false-positive case; unit: `LLM_EXTRA_BODY` gated to `model_id is None` via a
+  monkeypatched `urlopen` capturing the outgoing payload; container: `complete()`'s
+  backup-retry decision; parent: full continue/break batch behavior in all THREE `run()`
+  loops via monkeypatched harnesses against the real code, no network calls). Master
+  untouched throughout (branch `ui-ux-audit-fixes`). [revises the 2026-08-23 NVIDIA
+  reasoning-mode entry above]
 
 ---
 
