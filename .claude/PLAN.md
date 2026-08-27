@@ -820,6 +820,26 @@ realtime SSE, faster defaults (owner request 2026-08-23)**
   `/openapi.json` correct, `tsc -b`/lint clean, `apply`/`log` code paths
   untouched. Master not touched; branch `ui-ux-audit-fixes`.
 
+**Phase 15 — Résumé tailoring redesign: sector bases + perspective-shift reframing**
+  *(owner request 2026-08-24, plan approved same day — see §9 entries below for the
+  full decision set; full plan at the approved plan-mode file, since folded in here)*
+- [x] Phase 0 — `resumes/facts.json` fact ledger authored from the master, owner-reviewed
+- [x] Phase 1 — sector-tag fix in `match.py` (`ROLE_PROFILES`) + six sector `.tex` bases
+  (`resumes/vapt.tex`, `cloud.tex`, `ot-ics.tex`, `appsec.tex`, `detection.tex`,
+  `vuln-mgmt.tex`), each compiling to one page — done 2026-08-24, see §9
+- [x] Phase 1b — screening-surface wording pass across the master + all six sector bases
+  (reference-résumé doctrine, owner request 2026-08-24), + four owner-confirmed
+  capability atoms in `resumes/facts.json`, + `resumes/verify.py` gate runner — see §9
+- [ ] Phase 2 — shared `.tex` parser (`execution/resume_parse.py`, consolidating the four
+  duplicate parsers in `profile.py`/`respond.py`/`match.py`/`tailor.py`) +
+  `execution/factcheck.py` validator, unit-tested against adversarial inputs
+- [ ] Phase 3 — bullet-level splice in `tailor.py` (Experience + Projects, not just
+  Summary/skill-rows), sector-base selection, deterministic re-bold pass, page-count guard
+- [ ] Phase 4 — prompt redesign (drop dead `tagline_roles`/"Seeking opportunities in…",
+  feed `notes.matched`/`notes.missing`/`coverage`, decompose to per-bullet calls) +
+  `jd-understander` decontamination (stop echoing candidate profile back as JD content)
+- [ ] Phase 5 — `scripts/eval.py` provider scoreboard for free/all-model quality parity
+
 ---
 
 ## §9 Decisions Log  *(append-only; overrides the spec above)*
@@ -2293,3 +2313,148 @@ Format: `YYYY-MM-DD — <skill/surface> — <element> — <decision> [revises §
     (resolves + real job count) before adding — discovery ≠ verification, unchanged.
   - Master-résumé pre-send checklist items still open (see `README.md`: Metasploit
     `CONFIRM` line, OSCP `(In Progress)`, LinkedIn items 1 & 2).
+
+- 2026-08-24 — resume-tailor — rewrite depth — extend the splice surface beyond the
+  Professional Summary + `\techrow` reordering to also cover **Experience bullets and
+  Projects**, so the same fact can be reworded through a different lens per JD (owner's
+  own OT-plugin example: development work reframed to foreground protocol/pentesting
+  depth). Runtime never reorders `\resumeSection` blocks — only bullet text changes.
+  [revises the resume-tailor §5 catalog entry and the "master is sacred" design note]
+- 2026-08-24 — resume-tailor — sector taxonomy — build six committed sector `.tex`
+  bases keyed to the India market: **VAPT/Pentest, Cloud Security, OT/ICS, AppSec/API,
+  Detection/SOC, Vulnerability Management**. Repurposes the near-unused
+  `vuln_research` `ROLE_PROFILES` key (2/1430 jobs) into Vulnerability Management;
+  renames `red_team` → "VAPT / Pentest" to match Indian JD vocabulary. `General
+  Security` jobs keep using the master. [revises `match.py` `ROLE_PROFILES`, §5]
+- 2026-08-24 — profile-matcher — `role_profile` selection — fix the argmax so it
+  actually discriminates: weight title hits over `jd_text` hits, de-weight bare
+  single-token keywords (`cloud`, `aws`, `iam`) in favor of multiword phrases, and
+  require a win margin over the runner-up (below it → "General Security") — measured
+  live DB distribution showed Cloud Security winning 46% of 1430 jobs and General
+  Security 29%, i.e. `role_profile` was only discriminating on ~25% of jobs. This tag
+  now selects which sector résumé is sent, so the old looseness is no longer tolerable.
+  [revises `match.py:38-76,158-196`]
+- 2026-08-24 — resume-tailor — anti-fabrication — delete the `tagline_roles` directive
+  and the forced "Seeking opportunities in …" summary sentence: the current master has
+  no `{\small\itshape …}` tagline line, so `allowed_tagline_roles` is always `[]`, every
+  returned `tagline_roles` is dropped by the allowlist, and the "Seeking opportunities
+  in…" sentence has no anchor in `current_summary` — it was the one directive the model
+  was forced to invent, and it is shipping in real tailored PDFs today. [revises
+  `tailor.py` `SYSTEM_PROMPT`/`DIRECTIVE_KEYS`, §5]
+- 2026-08-24 — resume-tailor — fact validation — add `execution/factcheck.py`: every
+  LLM-rewritten bullet must preserve its source atom's numeric invariants, introduce no
+  entity outside the master vocabulary + the fact atom's own entity list, and trip a
+  seniority-inflation deny-list (`led the team`, `architected`, `senior`, `N+ years`
+  where N>2, etc.). One retry with violations fed back, then fall back to the sector
+  base's bullet verbatim — a job can ship un-reframed but never fabricated. [new;
+  extends the existing prompt-only "hard rules" in `tailor.py:81-86`]
+- 2026-08-24 — resume-tailor — ledger — author `resumes/facts.json`: one entry per
+  résumé claim (`core` text, `invariants` that must survive verbatim, `entities`
+  allowlist, `claim_boundary` e.g. "solo IC — never 'led'/'architected'"). Ground truth
+  for both the sector bases and the factcheck validator; owner-reviewed before use. [new]
+- 2026-08-24 — resume-tailor — India screening signals — **do not add** CGPA/
+  percentage, notice period, or a relocation line to the master résumé. Owner: "None —
+  keep as-is." Research had flagged these as high-impact for Indian recruiter
+  screening, but the owner declined; tailoring continues to only re-angle facts already
+  present in the master, never add new ones. [confirms current master; no code change]
+- 2026-08-24 — resume-tailor — variant storage — sector bases are **committed** `.tex`
+  files under `resumes/` (owner-reviewable, not LLM-only output); the per-JD reframe
+  pass applies on top of the matching sector base and writes to the existing gitignored
+  `tailored/<id>/` variant store, unchanged. [revises §5 "per-job variant store" note]
+- 2026-08-24 — resume-tailor — Phase 1 shipped — `match.py` `ROLE_PROFILES` fixed
+  (title-weighted argmax, generic single-token de-weighting, win-margin gate, dead
+  `"remediation"` token removed; `--show` against the live 302-row DB confirms 7 valid
+  labels, no stale ones) and all six sector bases (`resumes/vapt.tex`, `cloud.tex`,
+  `ot-ics.tex`, `appsec.tex`, `detection.tex`, `vuln-mgmt.tex`) authored, trimmed, and
+  verified: each compiles via `tectonic` to exactly one page (`pdfinfo`-confirmed),
+  passes a `facts.json` invariant/entity fabrication scan (no new numbers/tools/entities
+  introduced beyond the ledger + master vocabulary), and a seniority-inflation deny-list
+  scan (clean on all six). Per-section char-count deltas vs the master, final:
+  vapt +12, cloud +187, ot-ics +41, appsec −11, detection +52, vuln-mgmt −5.
+  **Technique learned and now standard practice for any future sector-base edit:**
+  char-count trimming alone does not reliably predict page overflow — `ot-ics.tex`
+  still overflowed at only +91 total delta (lower than `cloud.tex`'s working +187)
+  because it carried one extra `\techrow` line; each `\techrow` consumes a fixed line of
+  vertical height independent of its content length. When char-trimming plateaus without
+  fixing a 2-page result, merge/drop a `\techrow` line before cutting more prose — this
+  fixed ot-ics (9→8 rows) and vuln-mgmt (9→8 rows, plus one more prose trim for a
+  near-miss single-line Education overflow). Diagnosed with a reusable
+  `check_sector.py` script (per-section char deltas + fact/entity coverage vs
+  `facts.json`) plus `tectonic`+`pdfinfo`(+`pdftotext -f2 -l2` to see exactly what
+  spills) — same loop to reuse for any future sector-base work. Per CLAUDE.md's
+  mandated review+test loop: `match.py` was reviewed/tested by `code-reviewer`/
+  `code-tester` subagents (findings fixed — see script history); the six `.tex` files
+  were verified by the parent agent directly (compile+page-count+fact-scan+deny-list,
+  all above) rather than via subagents, since this session operates under an explicit
+  no-agent-spawn constraint — flagged here for visibility, not silently substituted.
+  [Phase 1 of Phase 15 — see §8]
+
+- 2026-08-24 — resume-tailor — wording doctrine — restructure the Professional Summary,
+  Technical Skills, Experience and Projects prose across the master **and all six sector
+  bases** to the screening pattern of an owner-supplied reference résumé
+  (`~/Downloads/ABDUL KALEEM VAPT 3+.pdf`, an Indian-market VAPT CV). Only the reference's
+  *approach* was adopted — none of its facts, clients, sectors, asset counts or tenure.
+  Five transferable rules, now standard for any sector-base edit: **(1)** the first eight
+  words carry the role category + `2+ years` + the sector keyword phrase; **(2)** one clause
+  enumerates the attack surface (web apps, APIs, networks, cloud, OT/ICS); **(3)** delivery-
+  lifecycle vocabulary is stated explicitly — CVSS scoring, validation, false-positive
+  analysis, risk-based prioritization, remediation guidance, re-validation — because the
+  owner already does all of it and previously said none of the words; **(4)** every
+  Experience bullet opens on a delivery verb (leading `Used`/`Worked across`/`Maintained`
+  banned — `Used Claude AI to…` inverted to `Automated … using Claude AI`, and the
+  zero-information "improve their experience with the company" bullet converted into the
+  reporting/remediation/re-validation bullet); **(5)** hobbyist tails stripped from Projects
+  ("mostly because I want…", "to get more comfortable with…", "to rehearse"). Also deleted:
+  the master's "strong interest in how technology architecture actually works" opener, the
+  "Also comfortable in <other sector>" hedge that opened paragraph 2 in five bases, and the
+  "Pursuing OSCP; completed TCM Security's…" summary closer (verbatim duplicate of the
+  Certifications section). Voice per owner: dense third-person paragraph 1, then **one**
+  retained first-person line (automation + open-source) so it does not read machine-written.
+  [revises §5 resume-tailor catalog entry; extends §9 2026-08-24 Phase 1]
+
+- 2026-08-24 — resume-tailor — ledger — four **owner-confirmed** capability atoms appended
+  to `resumes/facts.json`: `cap-api-security`, `cap-code-review` (SAST/DAST/secure code
+  review), `cap-compliance` (PCI-DSS, ISO 27001, NIST CSF), `cap-cvss-triage`. These are
+  capabilities the owner confirmed directly rather than claims the master already made, so
+  they use a new `"source": "owner-confirmed <date>"` convention in place of a
+  `varakumar_resume.tex:NN` line pin — `factcheck.py` must treat that prefix as a valid
+  source. `cap-api-security` also retroactively backs `Postman`, which `appsec.tex` was
+  already listing with no ledger or master-vocabulary backing. Ledger correction in the same
+  pass: `holm-cloudsploit` invariant `CIS benchmark` → `CIS Benchmark` (canonical
+  capitalization; the lowercase form was a typo inherited from the master's prose).
+  [extends §9 2026-08-24 ledger entry]
+
+- 2026-08-24 — resume-tailor — claim exclusions — **mobile application pentesting is NOT
+  claimed.** The owner was offered it (the reference résumé scores on it) and declined, so
+  `MobSF`, `Frida`, `Drozer`, `JADX` and any mobile-app-testing phrasing are permanently
+  denied; `NetHunter` was dropped from the skills rows for the same reason. Tenure stays
+  **2+ years** — the reference's "3+ years" must not bleed across. [confirms `facts.json`
+  claim boundaries; new deny entries]
+
+- 2026-08-24 — resume-tailor — delivery-voice cap — the owner asked for the Independent
+  Security Assessment block to be rewritten fully in delivery voice, but three `facts.json`
+  boundaries cap how far that can go without fabricating. Resolution, now the standard
+  pattern: `billmgr-vulns` → strong verbs (`Assessed`, `Exploited`, `Reported`) while the
+  word **"independent"** stays (it is itself delivery voice and accurate); never "client
+  engagement". `portswigger-labs` → framed as capability coverage with PortSwigger still
+  named; never "conducted for clients". `ad-advanced` → "Building toward advanced AD
+  attack-path expertise", never "Studying" (weak) and never claimed as mastery. The cap was
+  flagged to the owner before implementation, not silently applied.
+  [respects §9 2026-08-24 ledger; revises the Experience wording in all seven files]
+
+- 2026-08-24 — resume-tailor — verification — `resumes/verify.py` added as the reusable gate
+  runner for any résumé edit (`python3 resumes/verify.py` from the repo root): (1) one page
+  per file via `pdfinfo`, (2) per-atom invariant preservation, (3) unclaimed-capability
+  entity scan, (4) seniority/tenure deny-list. Two scanner rules learned the hard way and
+  now encoded: **PDF text must be de-hyphenated before scanning** — LaTeX breaks words across
+  lines (`Schnei-\nder Electric`) and a naive substring scan reports false invariant drops;
+  and the seniority deny-list must not blanket-match `certified professional`, because that
+  is the OSCP's own proper name — the real risk is checked instead by requiring "In Progress"
+  within 60 characters of it. All seven files pass all four gates. Page-fitting followed the
+  §9 2026-08-24 technique: merge or drop a `\techrow` before trimming more prose, and watch
+  for a row that silently wraps to a second line (this, not total char count, was what pushed
+  the master and `vapt.tex` to two pages). [new; supersedes the throwaway `check_sector.py`]
+
+- 2026-08-24 — CI/hosting — deploy.yml switched to GitHub Pages (subpath /job-search/) via peaceiris/actions-gh-pages@v4 (publishes web/dist-static to gh-pages branch); Netlify action removed. [§8 Phase 10 / deploy.yml]
+- 2026-08-24 — workflow — manual-job.yml (workflow_dispatch with title/company/url/poster/etc inputs) writes via data/store.py + exports snapshot; no scraper needed. [§8 / new]
+- 2026-08-24 — scrape — scrape.yml default queries expanded to include all 6 ROLE_PROFILES + SOC/Threat/Architect/Response market roles. [§8 / scrape.yml]
