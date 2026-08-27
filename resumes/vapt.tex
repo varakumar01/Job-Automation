@@ -1,9 +1,10 @@
 % ============================================================
-%  VARAKUMAR G  —  Master Resume
-%  Template: Single-column, ruled-section headers (mirrors reference)
-%  Engine : pdfLaTeX  (upload to Overleaf → Compile → Done)
-%  Notes  : Lines with "CONFIRM" are items to verify before sending.
-%           Comment them out or remove as needed.
+%  VARAKUMAR G  —  Résumé (Sector base: VAPT / Pentest)
+%  Derived from ../varakumar_resume.tex — SAME facts/numbers/entities, only the
+%  lens (which aspect of each fact is foregrounded) changes. See ../resumes/facts.json
+%  for the fact ledger this file is built from. Do not add any claim not already
+%  present in the master. PLAN.md §9 2026-08-24.
+%  Engine : tectonic (pdfTeX-compatible)
 % ============================================================
 \documentclass[9pt,a4paper]{extarticle}
 
@@ -40,7 +41,6 @@
 \changefontsize[10.7pt]{8.5pt}
 
 % ── Macros ──────────────────────────────────────────────────
-% Ruled section header — mirrors the reference template
 \newcommand{\resumeSection}[1]{%
   \vspace{5pt}%
   \noindent{\large\bfseries\MakeUppercase{#1}}\par%
@@ -48,8 +48,6 @@
   \noindent\rule{\textwidth}{0.5pt}%
   \par\vspace{0pt}%
 }
-
-% Technical-environment row  \techrow{Bold Label:}{Comma-sep items}
 \newcommand{\techrow}[2]{\noindent\textbf{#1} #2\par}
 
 
@@ -74,18 +72,18 @@
 % ── PROFESSIONAL SUMMARY ────────────────────────────────────
 \resumeSection{Professional Summary}
 
-Security Engineer with 2+ years in \textbf{Vulnerability Management} and \textbf{security assessment} across web applications, APIs, networks, cloud, and \textbf{OT/ICS} environments. Remediated \textbf{2,800+ CVEs} in OT Security within a year, working solo across a large attack surface. Owns the full triage lifecycle — \textbf{CVSS} scoring, false-positive analysis, risk-based prioritization, remediation guidance, and re-validation — against \textbf{OWASP Top 10}, \textbf{MITRE ATT\&CK}, \textbf{NIST CSF}, \textbf{CIS Benchmarks}, \textbf{PCI-DSS}, and \textbf{ISO 27001}, across IPsec, Kerberos, LDAP and the Modbus/BACnet/DNP3/PROFINET stack.
+Security Engineer with 2+ years in \textbf{Vulnerability Assessment and Penetration Testing (VAPT)} across web apps, APIs, networks, \textbf{Active Directory}, and \textbf{OT/ICS}. Independently assessed and exploited a live billing platform end-to-end — \textbf{IDOR}, \textbf{privilege escalation}, \textbf{SQL injection}, \textbf{XSS} — and reported it through a \textbf{GitHub Security Advisory}. Executes AD attack paths (\textbf{Kerberoasting}, \textbf{pass-the-hash}) and validated \textbf{2,800+ CVEs} in OT Security within a year, solo, scoring and prioritizing each with \textbf{CVSS} against \textbf{OWASP Top 10} and \textbf{MITRE ATT\&CK}.
 
-To keep pace with the volume I automated plugin development for OT security, cutting out the repetitive manual work — and I contribute to \textbf{open-source} security testing projects, because I want the tools I depend on to stay secure.
+Automated plugin development for OT security to keep pace with the volume, and I contribute to \textbf{open-source} security testing projects because I want the tools I depend on to stay secure.
 
 % ── TECHNICAL ENVIRONMENT ───────────────────────────────────
 \resumeSection{Technical Skills}
 
-\techrow{Security Domains:}{Vulnerability Management, VAPT, Cloud Security, ICS/OT Security, AppSec \& API Security, Secure Code Review}
-\techrow{Vulnerability \& Cloud Scanning:}{Nessus, OpenVAS, Qualys, CloudSploit, NVD, CVSS, AWS, Microsoft Azure, GCP, Oracle Cloud}
+\techrow{Security Domains:}{Penetration Testing, Vulnerability Assessment, Active Directory, AppSec \& API Security, ICS/OT Security}
 \techrow{Exploitation \& Security Testing:}{Metasploit, Burp Suite, Nmap, Wireshark, Postman, crAPI, VAmPI, Hashcat}
 \techrow{Network \& Security Protocols:}{IPsec, Kerberos, LDAP, TLS/SSL, DNS, DHCP, SNMP, SMB, RDP, SSH, HTTP/HTTPS}
 \techrow{OT/ICS \& Industrial Protocols:}{Modbus, BACnet, EtherNet/IP, DNP3, PROFINET}
+\techrow{Vulnerability \& Cloud Scanning:}{Nessus, OpenVAS, Qualys, CloudSploit, NVD, CVSS, AWS, Microsoft Azure, GCP, Oracle Cloud}
 \techrow{Frameworks \& Standards:}{OWASP Top 10, MITRE ATT\&CK, NIST CSF, CIS Benchmarks, CVSS, PCI-DSS, ISO 27001}
 \techrow{Programming \& Platforms:}{C, Python, Node.js, Bash, MongoDB, MySQL, Kali Linux, Arch Linux, WireGuard}
 
@@ -94,17 +92,17 @@ To keep pace with the volume I automated plugin development for OT security, cut
 
 \noindent\textbf{Holm Security AB} | Security Engineer \hfill \textbf{Randstad.in}
 \begin{itemize}
-  \item Grew \textbf{OT/SCADA CVE coverage from ~400 to 3,200+} within a year — a \textbf{700\% increase} in the
-        company's SCADA/OT security coverage for clients — triaging each finding with \textbf{CVSS} scoring,
-        false-positive analysis, and risk-based prioritization.
+  \item Reproduced and validated \textbf{OT/SCADA vulnerabilities} against real vendor advisories, growing
+        \textbf{CVE coverage from ~400 to 3,200+} within a year — a \textbf{700\% increase} in the company's
+        SCADA/OT coverage — scoring each with \textbf{CVSS} and ruling out false positives so effort tracked
+        real exploitability.
   \item Assessed OT security products from \textbf{Siemens}, \textbf{Schneider Electric}, \textbf{Rockwell Automation},
-        \textbf{ABB}, \textbf{Emerson}, and \textbf{Honeywell}, validating vulnerable conditions per protocol stack.
-  \item Managed the \textbf{CloudSploit platform end-to-end} across \textbf{AWS}, \textbf{Azure}, \textbf{GCP}, and
-        \textbf{Oracle}, enforcing \textbf{CIS Benchmark} compliance and contributing reviewed fixes upstream.
-  \item Automated security-check development for vulnerability management and \textbf{CloudSploit} using
-        \textbf{Claude AI}, cutting manual plugin-authoring effort as new CVEs landed.
-  \item Reported findings directly to clients with risk-based remediation guidance, then re-validated fixes to
-        confirm closure.
+        \textbf{ABB}, \textbf{Emerson}, and \textbf{Honeywell}, proving exploit conditions against each vendor's
+        protocol stack.
+  \item Assessed the \textbf{CloudSploit platform end-to-end} across \textbf{AWS}, \textbf{Azure}, \textbf{GCP}, and
+        \textbf{Oracle} against \textbf{CIS Benchmark} controls, contributing reviewed fixes upstream.
+  \item Automated security-check development using \textbf{Claude AI}, then walked clients through findings with
+        remediation guidance and re-validated fixes.
 \end{itemize}
 
 \vspace{3pt}
@@ -121,21 +119,20 @@ To keep pace with the volume I automated plugin development for OT security, cut
           on the project repository.
   \end{itemize}
 
+  \item \textbf{Active Directory Security Assessment:}
+  \begin{itemize}
+    \item Executed core AD attack paths end-to-end: \textbf{Kerberoasting}, \textbf{LLMNR/NBT-NS
+          poisoning}, \textbf{pass-the-hash}, and \textbf{privilege escalation} via misconfigured \textbf{ACLs}.
+    \item Building toward advanced AD attack-path expertise: \textbf{ADCS abuse (ESC1 to ESC8)},
+          \textbf{delegation attacks} (unconstrained, constrained, resource-based),
+          \textbf{Shadow Credentials}, and \textbf{BloodHound}-driven attack path analysis.
+  \end{itemize}
+
   \item \textbf{Web \& API Security Testing (PortSwigger Web Security Academy):}
   \begin{itemize}
     \item Exploited \textbf{SQL injection}, \textbf{XSS}, \textbf{CSRF}, \textbf{authentication bypass},
           \textbf{access control}, \textbf{SSRF}, \textbf{XXE}, and \textbf{insecure deserialization} labs
           hands-on, carrying the same techniques into \textbf{API security testing} on \textbf{crAPI}/\textbf{VAmPI}.
-  \end{itemize}
-
-  \item \textbf{Active Directory Security Assessment:}
-  \begin{itemize}
-    \item Executed core AD attack paths end-to-end: \textbf{Kerberoasting}, \textbf{LLMNR/NBT-NS
-          poisoning}, \textbf{pass-the-hash}, and \textbf{privilege escalation} via misconfigured
-          \textbf{ACLs}.
-    \item Building toward advanced AD attack-path expertise: \textbf{ADCS abuse (ESC1 to ESC8)},
-          \textbf{delegation attacks} (unconstrained, constrained, resource-based),
-          \textbf{Shadow Credentials}, and \textbf{BloodHound}-driven attack path analysis.
   \end{itemize}
 \end{itemize}
 
@@ -145,8 +142,8 @@ To keep pace with the volume I automated plugin development for OT security, cut
   \item \textbf{Subdomain \& Attack Surface Enumeration Tool}
         | Python, Requests, dnspython \\
         Turns a target scope into a prioritized attack surface: enumerates subdomains from public sources
-        like \textbf{crt.sh}, \textbf{brute-forces} the remainder over \textbf{DNS}, then scans open ports
-        and fingerprints each host's stack with \textbf{OpenVAS} plus custom backend-fingerprinting plugins.
+        like \textbf{crt.sh}, \textbf{brute-forces} the remainder over \textbf{DNS}, then scans open ports and
+        fingerprints each host's stack with \textbf{OpenVAS} plus custom backend-fingerprinting plugins.
 
   \item \textbf{Self-Maintained OpenVAS Scanner}
         | Nmap, NASL \\
@@ -158,9 +155,9 @@ To keep pace with the volume I automated plugin development for OT security, cut
         \begin{itemize}
         \item \textbf{Active Directory lab:} Built a \textbf{domain controller} and client machines to run full
               attack chains hands-on — \textbf{Kerberoasting}, \textbf{LLMNR poisoning}, \textbf{privilege escalation}.
-        \item \textbf{pfSense + Vulnerable VMs:} Home lab behind a \textbf{pfSense} firewall with
-              intentionally vulnerable targets (\textbf{Metasploitable}, \textbf{DVWA}, \textbf{VulnHub})
-              covering the full recon-to-exploit flow.
+        \item \textbf{pfSense + Vulnerable VMs:} Home lab behind a \textbf{pfSense} firewall with intentionally
+              vulnerable targets (\textbf{Metasploitable}, \textbf{DVWA}, \textbf{VulnHub}) covering the full
+              recon-to-exploit flow.
         \end{itemize}
 \end{itemize}
 

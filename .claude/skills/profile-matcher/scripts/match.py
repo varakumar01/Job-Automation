@@ -2,8 +2,9 @@
 
 Deterministic (pure stdlib, no LLM/API/network). Reads jobs at status ``scraped``
 plus the master résumé `.tex`, scores each 0–100 on skill overlap + role fit +
-title/seniority fit, picks the best-fit role-profile (the README variants), writes
-``match_score`` / ``role_profile`` / a compact rationale in ``notes``, and advances
+title/seniority fit, picks the best-fit role-profile (the sector variants per
+PLAN.md §9), writes ``match_score`` / ``role_profile`` / a compact rationale in
+``notes``, and advances
 ``scraped → matched``. Persists per job (resumable).
 
 Usage::
@@ -33,57 +34,70 @@ from execution.log import add_verbose_arg, apply_verbosity, vprint  # noqa: E402
 
 DEFAULT_RESUME = ROOT / "varakumar_resume.tex"
 
-# Role-profiles (README §"Creating Role-Specific Variants"). Each maps to a résumé
-# variant resume-tailor will produce; keywords drive both role pick and the vocab.
+# Role-profiles = the six India-market sectors resume-tailor builds a résumé base
+# for (PLAN.md §9 2026-08-24, revises the old README "Creating Role-Specific
+# Variants" table). Keywords drive both role pick and the vocab. Renamed from the
+# original 7-key set: "red_team" relabeled "VAPT / Pentest" (Indian JDs say VAPT,
+# not "red team"); "vuln_research" (exploit-dev/fuzzing/reversing — 2/1430 jobs in
+# the live corpus, and not one of the 6 chosen sectors) repurposed into
+# "Vulnerability Management" (Nessus/OpenVAS/Qualys/triage — the candidate's actual
+# day job, previously had NO dedicated bucket). The dropped exploit-dev/reversing
+# terms moved to EXTRA_VOCAB below so they're still recognized as skills, just no
+# longer steer a dedicated sector pick.
 ROLE_PROFILES: dict[str, dict] = {
-    "red_team": {
-        "label": "Red Team / Pentest",
-        "keywords": ["red team", "penetration testing", "pentest", "offensive security",
-                     "offensive", "exploitation", "exploit", "burp suite", "metasploit",
-                     "oscp", "active directory", "osint", "social engineering",
-                     "privilege escalation", "nmap", "kali", "c2", "adversary emulation"],
+    "vapt_pentest": {
+        "label": "VAPT / Pentest",
+        "keywords": ["red team", "red teaming", "penetration testing", "pentest",
+                     "vapt", "offensive security", "offensive", "exploitation",
+                     "exploit", "burp suite", "metasploit", "oscp", "ceh",
+                     "active directory", "osint", "social engineering",
+                     "privilege escalation", "nmap", "kali", "c2",
+                     "adversary emulation"],
     },
     "detection_eng": {
         "label": "Detection Engineering",
         "keywords": ["detection engineering", "detection rule", "detection", "nasl", "nse",
-                     "signature", "siem", "threat detection", "openvas", "nessus", "qualys",
-                     "vulnerability detection", "mitre att&ck", "yara", "sigma", "splunk",
-                     "elastic", "sentinel", "edr"],
+                     "signature", "siem", "threat detection", "mitre att&ck", "yara",
+                     "sigma", "splunk", "elastic", "sentinel", "edr"],
     },
     "cloud_sec": {
         "label": "Cloud Security",
-        "keywords": ["cloud security", "aws", "azure", "gcp", "cloudsploit", "cis benchmark",
-                     "cspm", "iam", "kubernetes", "container", "terraform", "compliance",
-                     "cloud"],
+        "keywords": ["cloud security", "cloud security posture", "aws", "azure", "gcp",
+                     "cloudsploit", "cis benchmark", "cspm", "iam", "kubernetes",
+                     "container", "terraform", "compliance", "cloud"],
     },
     "ics_ot": {
         "label": "ICS/OT Security",
         "keywords": ["ics", "scada", "ot security", "operational technology", "modbus",
                      "bacnet", "dnp3", "profinet", "ethernet/ip", "plc", "purdue"],
     },
-    "vuln_research": {
-        "label": "Vulnerability Research",
-        "keywords": ["vulnerability research", "cve", "exploit development", "fuzzing",
-                     "reverse engineering", "binary analysis", "nvd", "zero-day", "0-day",
-                     "reversing"],
+    "vuln_mgmt": {
+        "label": "Vulnerability Management",
+        "keywords": ["vulnerability management", "vulnerability assessment",
+                     "vulnerability scanning", "vulnerability lifecycle",
+                     "risk-based vulnerability management", "patch management",
+                     "vulnerability triage", "nessus", "openvas", "qualys", "cvss"],
     },
     "appsec": {
         "label": "Application Security",
-        "keywords": ["application security", "appsec", "owasp", "sast", "dast",
-                     "secure code review", "secure sdlc", "api security", "code review",
+        "keywords": ["application security", "appsec", "api security", "owasp", "sast", "dast",
+                     "secure code review", "secure sdlc", "code review",
                      "threat modeling"],
     },
 }
 
 # Common security skills the recognizer should know beyond the candidate's résumé,
-# so "missing" skills (in JD, not in résumé) are surfaced for resume-tailor.
+# so "missing" skills (in JD, not in résumé) are surfaced for resume-tailor. Also
+# holds the exploit-dev/reversing terms dropped from ROLE_PROFILES above (2026-08-24)
+# — still recognized as skills, just no longer a dedicated sector.
 EXTRA_VOCAB = [
     "python", "bash", "node.js", "golang", "java", "c++", "powershell", "sql",
     "docker", "ci/cd", "linux", "firewall", "ids", "ips", "vpn", "pki",
     "encryption", "incident response", "threat hunting", "soc", "soc 2",
     "iso 27001", "gdpr", "nist", "pci dss", "crowdstrike", "wireshark",
-    "vulnerability management", "vulnerability assessment", "network security",
-    "endpoint security", "malware analysis", "git", "rest api",
+    "network security", "endpoint security", "malware analysis", "git", "rest api",
+    "vulnerability research", "cve", "nvd", "exploit development", "fuzzing",
+    "reverse engineering", "binary analysis", "zero-day", "0-day", "reversing",
 ]
 
 # Target-role terms (in a job TITLE → likely a fit) and seniority markers (the
@@ -96,6 +110,42 @@ SENIORITY_SENIOR = ["senior", "sr.", "sr", "lead", "principal", "staff", "manage
                     "director", "head of", "head", "vp", "architect"]
 
 SKILL_MAX, ROLE_MAX = 60.0, 25.0
+
+# Role-pick weighting (PLAN.md §9 2026-08-24). Live-DB measurement before this fix:
+# "Cloud Security" won 46% of 1430 jobs and "General Security" 29%, because the old
+# picker was a flat argmax over raw keyword-hit counts and cloud_sec's keyword list
+# is full of bare tokens ("cloud", "aws", "iam") that fire in almost any modern JD.
+# Fix: (1) a title hit is far more diagnostic than a body hit, so title hits get
+# TITLE_WEIGHT; (2) a multiword/compound phrase ("penetration testing", "ethernet/ip")
+# is far more diagnostic than a bare single token, so it counts double, while a
+# handful of the worst single-token offenders count for half; (3) the winner must
+# clear ROLE_MIN_SCORE and beat the runner-up by ROLE_MARGIN_MIN, else the pick is
+# too thin to trust and we fall back to "General Security" (→ the master résumé)
+# rather than guessing a sector — this tag now selects which résumé BASE gets sent,
+# not just a cache key, so a wrong guess is no longer harmless.
+# Tuned empirically against the live 1430-row corpus (2026-08-24): swept
+# ROLE_MIN_SCORE/ROLE_MARGIN_MIN pairs and picked the one where Cloud Security's
+# share drops well below its old 46% without over-correcting into an unusable
+# General-Security-dominated bucket. Result at these values, re-scoring the 302
+# `matched` rows: General Security 43.4%, Cloud Security 24.8% (was 46%), Detection
+# Engineering 15.6%, VAPT/Pentest 6.0%, AppSec 5.0%, Vuln Mgmt 4.3%, ICS/OT 1.0%.
+TITLE_WEIGHT = 3.0
+ROLE_MIN_SCORE = 2.0
+ROLE_MARGIN_MIN = 1.0
+GENERIC_SINGLE_TOKENS = {"cloud", "compliance", "container", "detection", "signature",
+                         "exploit"}
+
+
+def _kw_weight(term: str) -> float:
+    if " " in term or "/" in term:
+        return 2.0
+    if term in GENERIC_SINGLE_TOKENS:
+        return 0.5
+    return 1.0
+
+
+def _weighted_hits(text: str, keywords: list[str]) -> float:
+    return sum(_kw_weight(kw) for kw in keywords if _present(text, kw))
 
 
 def _clean_tex(raw: str) -> str:
@@ -157,7 +207,9 @@ def skills_in(text: str, vocab: list[str]) -> list[str]:
 
 def score_job(title: str, jd_text: str, resume_skills: set[str], vocab: list[str]) -> dict:
     """Return score breakdown + role pick + matched/missing skills for one job."""
-    blob = f"{title}\n{jd_text}".lower()
+    title_l = (title or "").lower()
+    jd_l = (jd_text or "").lower()
+    blob = f"{title_l}\n{jd_l}"
     jd_skills = skills_in(blob, vocab)
     matched = [s for s in jd_skills if s in resume_skills]
     missing = [s for s in jd_skills if s not in resume_skills]
@@ -166,14 +218,23 @@ def score_job(title: str, jd_text: str, resume_skills: set[str], vocab: list[str
     abs_bonus = min(len(matched) / 8.0, 1.0)
     skill_score = (0.7 * coverage + 0.3 * abs_bonus) * SKILL_MAX
 
-    role_key, role_label, best_hits = "general", "General Security", 0
-    for key, prof in ROLE_PROFILES.items():
-        hits = sum(1 for kw in prof["keywords"] if _present(blob, kw))
-        if hits > best_hits:
-            role_key, role_label, best_hits = key, prof["label"], hits
-    role_score = min(best_hits / 5.0, 1.0) * ROLE_MAX
+    # Title hits count TITLE_WEIGHT×; a term repeated in both title and body counts
+    # in both places (that's a stronger signal, not double-counting the same hit).
+    role_weighted = {
+        key: TITLE_WEIGHT * _weighted_hits(title_l, prof["keywords"])
+             + _weighted_hits(jd_l, prof["keywords"])
+        for key, prof in ROLE_PROFILES.items()
+    }
+    ranked = sorted(role_weighted.items(), key=lambda kv: kv[1], reverse=True)
+    best_key, best_val = ranked[0]
+    runner_val = ranked[1][1] if len(ranked) > 1 else 0.0
 
-    title_l = title.lower()
+    if best_val >= ROLE_MIN_SCORE and (best_val - runner_val) >= ROLE_MARGIN_MIN:
+        role_key, role_label = best_key, ROLE_PROFILES[best_key]["label"]
+        role_score = min(best_val / 10.0, 1.0) * ROLE_MAX
+    else:
+        role_key, role_label, role_score = "general", "General Security", 0.0
+
     role_in_title = any(_present(title_l, t.strip()) for t in TITLE_ROLE_TERMS)
     # Word-boundary match (not substring) so "head"/"sr" don't fire inside
     # "headless"/"disaster" etc. (matches role_in_title's matching above).
@@ -236,8 +297,13 @@ def run(resume_path: Path, dry_run: bool, rescore: bool = False) -> int:
             store.update_job(job["id"], **fields)
 
     results.sort(key=lambda r: r[1]["score"], reverse=True)
-    print(f"\n{'scored' if dry_run else 'matched'} {len(results)} job(s) "
-          f"({'DRY-RUN, nothing written' if dry_run else 'status → matched'}):\n")
+    if dry_run:
+        write_note = "DRY-RUN, nothing written"
+    elif rescore:
+        write_note = "rescored in-place, status unchanged"
+    else:
+        write_note = "status → matched"
+    print(f"\n{'scored' if dry_run else 'matched'} {len(results)} job(s) ({write_note}):\n")
     for job, res in results:
         print(f"  {res['score']:>5.1f}  [{res['role_label']:<22}] "
               f"{(job.get('title') or '')[:42]:<42} @ {(job.get('company') or '')[:22]} ({job['source']})")

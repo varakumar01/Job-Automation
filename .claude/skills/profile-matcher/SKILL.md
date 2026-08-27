@@ -29,11 +29,13 @@ session/api LLM provider (that's for jd-understander / humanise-responder).
 - **Title/seniority fit (−10…+15)** — a security role term in the title adds points;
   senior/lead/principal/staff/manager titles subtract (the résumé is ~2 yrs experience).
 
-The chosen **role-profile** (Red Team / Pentest · Detection Engineering · Cloud
-Security · ICS/OT Security · Vulnerability Research · Application Security — the
-README variants) is stored in `role_profile` to steer resume-tailor. `notes` holds a
-JSON rationale: `{role, breakdown, matched[], missing[]}` — `missing` = skills the JD
-wants that the résumé lacks (useful to resume-tailor).
+The chosen **role-profile** — the India-market six from PLAN.md §9 (VAPT / Pentest ·
+Cloud Security · ICS/OT Security · Application Security · Detection Engineering ·
+Vulnerability Management), plus a General Security fallback when no sector clears the
+win margin — is stored in `role_profile` to steer resume-tailor, which now picks the
+matching committed sector base under `resumes/*.tex` (see PLAN §9 2026-08-24). `notes`
+holds a JSON rationale: `{role, breakdown, matched[], missing[]}` — `missing` = skills
+the JD wants that the résumé lacks (useful to resume-tailor).
 
 ## Run it
 

@@ -1,0 +1,474 @@
+{
+  "_comment": "Fact ledger for resume-tailor's perspective-shift reframing (PLAN.md Phase 15, §9 2026-08-24). Each atom is a claim the master resume already makes: 'core' = what happened, 'invariants' = tokens (numbers/names) that MUST survive verbatim in any reframed rewrite, 'entities' = named tools/vendors/orgs allowed to appear (union with the master's own vocabulary forms factcheck.py's entity allowlist), 'claim_boundary' = the seniority/scope line a rewrite must not cross. 'source' pins the atom to the master so an editor can verify nothing was invented. This file is hand-authored and owner-reviewed -- resume-tailor reads it, never writes it. Atoms with source 'owner-confirmed <date>' are capabilities the owner confirmed directly rather than ones already written into the master; they are legal to use in a rewrite but must still respect their claim_boundary.",
+  "generated_from": "varakumar_resume.tex",
+  "generated_at": "2026-08-24",
+  "facts": [
+    {
+      "id": "summary-vuln-mgmt",
+      "section": "summary",
+      "source": "varakumar_resume.tex:77",
+      "core": "2+ years managing Vulnerability Management across cloud environments end-to-end, including fixing 2,800+ CVEs in OT Security within a year, working solo across a large attack surface",
+      "invariants": [
+        "2 years",
+        "2,800+",
+        "OT Security"
+      ],
+      "entities": [
+        "Vulnerability Management",
+        "cloud environments",
+        "OT Security"
+      ],
+      "claim_boundary": "solo individual-contributor work across a large attack surface -- never 'led', 'managed a team of', 'architected', or implies more than 2 years"
+    },
+    {
+      "id": "summary-protocols",
+      "section": "summary",
+      "source": "varakumar_resume.tex:77",
+      "core": "works with protocols: IPsec, Kerberos, LDAP, Modbus, BACnet, EtherNet/IP, DNP3, PROFINET, SNMP",
+      "invariants": [
+        "IPsec",
+        "Kerberos",
+        "LDAP",
+        "Modbus",
+        "BACnet",
+        "EtherNet/IP",
+        "DNP3",
+        "PROFINET",
+        "SNMP"
+      ],
+      "entities": [
+        "IPsec",
+        "Kerberos",
+        "LDAP",
+        "Modbus",
+        "BACnet",
+        "EtherNet/IP",
+        "DNP3",
+        "PROFINET",
+        "SNMP"
+      ],
+      "claim_boundary": "working knowledge of these protocols as used day-to-day -- never claim protocol design/authorship"
+    },
+    {
+      "id": "summary-automation",
+      "section": "summary",
+      "source": "varakumar_resume.tex:79",
+      "core": "automated plugin development for OT security, cutting down manual repetitive work",
+      "invariants": [
+        "OT security"
+      ],
+      "entities": [
+        "automation",
+        "plugin development"
+      ],
+      "claim_boundary": "automated own workflow -- not a platform/product the candidate owns or sells"
+    },
+    {
+      "id": "summary-opensource",
+      "section": "summary",
+      "source": "varakumar_resume.tex:79",
+      "core": "contributes to open-source security testing and development projects",
+      "invariants": [
+        "open-source"
+      ],
+      "entities": [
+        "open-source"
+      ],
+      "claim_boundary": "contributor, not maintainer/owner of the upstream project (see holm-cloudsploit for the one project where 'upstream changes' is explicitly earned)"
+    },
+    {
+      "id": "holm-cve-coverage",
+      "section": "experience",
+      "source": "varakumar_resume.tex:99-100",
+      "core": "at Holm Security AB, grew OT/SCADA CVE coverage from ~400 to 3,200+ within a year -- a 700% increase in the company's SCADA/OT security coverage for clients",
+      "invariants": [
+        "400",
+        "3,200+",
+        "700%",
+        "Holm Security",
+        "SCADA",
+        "OT"
+      ],
+      "entities": [
+        "Holm Security AB",
+        "Randstad.in",
+        "OT",
+        "SCADA"
+      ],
+      "claim_boundary": "solo IC contribution -- never 'led', 'owned the team', 'architected', or 'managed a group'"
+    },
+    {
+      "id": "holm-vendors",
+      "section": "experience",
+      "source": "varakumar_resume.tex:101-102",
+      "core": "worked across OT security products from Siemens, Schneider Electric, Rockwell Automation, ABB, Emerson, and Honeywell",
+      "invariants": [
+        "Siemens",
+        "Schneider Electric",
+        "Rockwell Automation",
+        "ABB",
+        "Emerson",
+        "Honeywell"
+      ],
+      "entities": [
+        "Siemens",
+        "Schneider Electric",
+        "Rockwell Automation",
+        "ABB",
+        "Emerson",
+        "Honeywell"
+      ],
+      "claim_boundary": "product-level familiarity across six vendor families -- never claim a vendor certification/partnership that doesn't exist elsewhere on the resume"
+    },
+    {
+      "id": "holm-cloudsploit",
+      "section": "experience",
+      "source": "varakumar_resume.tex:103-104",
+      "core": "managed the CloudSploit platform end-to-end across AWS, Azure, GCP, and Oracle, maintaining CIS benchmark compliance while maintaining upstream changes for the CloudSploit project",
+      "invariants": [
+        "CloudSploit",
+        "AWS",
+        "Azure",
+        "GCP",
+        "Oracle",
+        "CIS Benchmark"
+      ],
+      "entities": [
+        "CloudSploit",
+        "AWS",
+        "Microsoft Azure",
+        "Google Cloud Platform",
+        "GCP",
+        "Oracle",
+        "CIS Benchmarks"
+      ],
+      "claim_boundary": "end-to-end ownership of one platform as a solo IC, with real upstream (open-source) contributions -- never 'built CloudSploit' or 'led a cloud security team'"
+    },
+    {
+      "id": "holm-ai-automation",
+      "section": "experience",
+      "source": "varakumar_resume.tex:105",
+      "core": "used Claude AI to automate security code development for vulnerability management and CloudSploit",
+      "invariants": [
+        "Claude AI",
+        "CloudSploit"
+      ],
+      "entities": [
+        "Claude AI",
+        "CloudSploit"
+      ],
+      "claim_boundary": "AI-assisted own development workflow -- not an AI product built or shipped to others"
+    },
+    {
+      "id": "holm-client-work",
+      "section": "experience",
+      "source": "varakumar_resume.tex:106",
+      "core": "worked directly with clients to resolve issues and improve their experience with the company",
+      "invariants": [],
+      "entities": [],
+      "claim_boundary": "individual technical point of contact -- never 'account management' or 'client relationship ownership'"
+    },
+    {
+      "id": "billmgr-vulns",
+      "section": "experience",
+      "source": "varakumar_resume.tex:112-119",
+      "core": "independently assessed Bill Manager (an e-commerce/billing app) and found: broken access control between user and admin roles, IDOR on invoices/billing records, privilege escalation via role/parameter tampering, SQL injection on login and search fields, stored/reflected XSS, insecure password reset flow, missing rate limiting on login attempts, and weak session/JWT handling",
+      "invariants": [
+        "Bill Manager",
+        "broken access control",
+        "IDOR",
+        "privilege escalation",
+        "SQL injection",
+        "XSS",
+        "session",
+        "JWT"
+      ],
+      "entities": [
+        "Bill Manager",
+        "IDOR",
+        "SQL injection",
+        "XSS",
+        "CSRF",
+        "JWT"
+      ],
+      "claim_boundary": "independent/personal assessment, not a paid client engagement or employer-sanctioned pentest"
+    },
+    {
+      "id": "billmgr-ghsa",
+      "section": "experience",
+      "source": "varakumar_resume.tex:120-121",
+      "core": "documented findings and fixes through a GitHub Security Advisory on the Bill Manager project repository",
+      "invariants": [
+        "GitHub Security Advisory",
+        "Bill Manager"
+      ],
+      "entities": [
+        "GitHub Security Advisory",
+        "Bill Manager"
+      ],
+      "claim_boundary": "responsible-disclosure documentation, not a CVE assignment unless the master says so elsewhere (it doesn't)"
+    },
+    {
+      "id": "portswigger-labs",
+      "section": "experience",
+      "source": "varakumar_resume.tex:124-128",
+      "core": "completed hands-on labs on PortSwigger Web Security Academy across SQL injection, XSS, CSRF, authentication bypass, access control, SSRF, XXE, insecure deserialization, and API testing",
+      "invariants": [
+        "PortSwigger Web Security Academy",
+        "SQL injection",
+        "XSS",
+        "CSRF",
+        "SSRF",
+        "XXE"
+      ],
+      "entities": [
+        "PortSwigger",
+        "Web Security Academy",
+        "SQL injection",
+        "XSS",
+        "CSRF",
+        "SSRF",
+        "XXE",
+        "API testing"
+      ],
+      "claim_boundary": "self-paced training labs completed, not employer/client engagements"
+    },
+    {
+      "id": "ad-core",
+      "section": "experience",
+      "source": "varakumar_resume.tex:130-133",
+      "core": "practiced core Active Directory attack paths: Kerberoasting, LLMNR/NBT-NS poisoning, pass-the-hash, and privilege escalation via misconfigured ACLs",
+      "invariants": [
+        "Kerberoasting",
+        "LLMNR",
+        "NBT-NS",
+        "pass-the-hash",
+        "ACLs"
+      ],
+      "entities": [
+        "Active Directory",
+        "Kerberoasting",
+        "LLMNR",
+        "NBT-NS",
+        "pass-the-hash",
+        "ACL"
+      ],
+      "claim_boundary": "personal-lab / self-study practice, not a client AD pentest engagement"
+    },
+    {
+      "id": "ad-advanced",
+      "section": "experience",
+      "source": "varakumar_resume.tex:134-136",
+      "core": "studying newer/advanced AD attack techniques: ADCS abuse (ESC1 to ESC8), delegation attacks (unconstrained, constrained, resource-based), Shadow Credentials, and BloodHound-driven attack path analysis",
+      "invariants": [
+        "ADCS",
+        "ESC1",
+        "ESC8",
+        "Shadow Credentials",
+        "BloodHound"
+      ],
+      "entities": [
+        "ADCS",
+        "BloodHound",
+        "Shadow Credentials"
+      ],
+      "claim_boundary": "explicitly in-progress study, not claimed mastery -- keep the 'studying' framing, never present as completed expertise"
+    },
+    {
+      "id": "proj-enum-tool",
+      "section": "projects",
+      "source": "varakumar_resume.tex:143-149",
+      "core": "built a Subdomain & Attack Surface Enumeration Tool (Python, Requests, dnspython) that finds subdomains from public sources like crt.sh, brute-forces the rest locally with DNS lookups, scans open ports, and fingerprints the tech stack on each host using OpenVAS plus custom plugins",
+      "invariants": [
+        "Python",
+        "dnspython",
+        "crt.sh",
+        "DNS",
+        "OpenVAS"
+      ],
+      "entities": [
+        "Python",
+        "Requests",
+        "dnspython",
+        "crt.sh",
+        "OpenVAS"
+      ],
+      "claim_boundary": "personal/independent project, not a commercial product"
+    },
+    {
+      "id": "proj-openvas",
+      "section": "projects",
+      "source": "varakumar_resume.tex:151-157",
+      "core": "maintains a custom fork of OpenVAS with custom NASL plugins for CVE checks the default feed doesn't cover yet, plus AI-automated scripts to keep the feed updated as new CVEs come out",
+      "invariants": [
+        "OpenVAS",
+        "NASL",
+        "CVE"
+      ],
+      "entities": [
+        "OpenVAS",
+        "Nmap",
+        "NASL"
+      ],
+      "claim_boundary": "personal fork/maintenance, not the official OpenVAS project"
+    },
+    {
+      "id": "proj-lab-ad",
+      "section": "projects",
+      "source": "varakumar_resume.tex:159-163",
+      "core": "built a real-world Active Directory home lab with a domain controller and client machines to practice AD attack paths (Kerberoasting, LLMNR poisoning, privilege escalation)",
+      "invariants": [
+        "Active Directory",
+        "domain controller",
+        "Kerberoasting",
+        "LLMNR"
+      ],
+      "entities": [
+        "Active Directory",
+        "Kerberoasting",
+        "LLMNR"
+      ],
+      "claim_boundary": "home lab for personal practice, not production infrastructure"
+    },
+    {
+      "id": "proj-lab-pfsense",
+      "section": "projects",
+      "source": "varakumar_resume.tex:164-167",
+      "core": "set up a home lab behind a pfSense firewall with intentionally vulnerable VMs (Metasploitable, DVWA, VulnHub) to practice scanning, exploiting, and the full pentesting flow",
+      "invariants": [
+        "pfSense",
+        "Metasploitable",
+        "DVWA",
+        "VulnHub"
+      ],
+      "entities": [
+        "pfSense",
+        "Metasploitable",
+        "DVWA",
+        "VulnHub"
+      ],
+      "claim_boundary": "home lab for personal practice"
+    },
+    {
+      "id": "cert-oscp",
+      "section": "certifications",
+      "source": "varakumar_resume.tex:175",
+      "core": "Offensive Security Certified Professional (OSCP), OffSec -- In Progress",
+      "invariants": [
+        "OSCP",
+        "OffSec",
+        "In Progress"
+      ],
+      "entities": [
+        "OSCP",
+        "OffSec"
+      ],
+      "claim_boundary": "in progress, never present as already certified"
+    },
+    {
+      "id": "cert-tcm",
+      "section": "certifications",
+      "source": "varakumar_resume.tex:176",
+      "core": "completed TCM Security: Practical Ethical Hacking, Windows & Linux Privilege Escalation, OSINT Fundamentals, External Pentest Playbook",
+      "invariants": [
+        "TCM Security",
+        "Practical Ethical Hacking"
+      ],
+      "entities": [
+        "TCM Security"
+      ],
+      "claim_boundary": "completed course certificates, not an industry-recognized cert like OSCP/CEH"
+    },
+    {
+      "id": "edu-degree",
+      "section": "education",
+      "source": "varakumar_resume.tex:182-184",
+      "core": "B.Tech Computer Science, Malla Reddy College of Engineering & Technology, Hyderabad, 2018-2022",
+      "invariants": [
+        "Malla Reddy",
+        "2018",
+        "2022",
+        "Computer Science"
+      ],
+      "entities": [
+        "Malla Reddy College of Engineering & Technology"
+      ],
+      "claim_boundary": "no CGPA/percentage is listed in the master and none may be invented (PLAN.md §9 2026-08-24: owner declined adding one)"
+    },
+    {
+      "id": "cap-api-security",
+      "section": "summary",
+      "source": "owner-confirmed 2026-08-24",
+      "core": "hands-on API security testing -- exercises authentication/authorization, BOLA/IDOR, injection and rate-limiting flaws against APIs using Burp Suite, Postman, crAPI and VAmPI",
+      "invariants": [
+        "API security testing"
+      ],
+      "entities": [
+        "API security testing",
+        "API penetration testing",
+        "Burp Suite",
+        "Postman",
+        "crAPI",
+        "VAmPI",
+        "BOLA",
+        "IDOR",
+        "OWASP API Security Top 10"
+      ],
+      "claim_boundary": "hands-on testing of APIs as an individual tester -- never API gateway/platform architecture, never 'owned the API security programme'"
+    },
+    {
+      "id": "cap-code-review",
+      "section": "summary",
+      "source": "owner-confirmed 2026-08-24",
+      "core": "performs secure code review and runs SAST/DAST tooling -- security-focused review of own and open-source code, including OpenVAS NASL plugins and CloudSploit upstream contributions",
+      "invariants": [
+        "secure code review"
+      ],
+      "entities": [
+        "SAST",
+        "DAST",
+        "secure code review",
+        "static analysis",
+        "dynamic analysis"
+      ],
+      "claim_boundary": "security-focused review and tooling on own and open-source code -- never 'owned the SAST programme', 'rolled out AppSec tooling enterprise-wide', or implies a dedicated AppSec team role"
+    },
+    {
+      "id": "cap-compliance",
+      "section": "summary",
+      "source": "owner-confirmed 2026-08-24",
+      "core": "works to and can speak to compliance frameworks: PCI-DSS, ISO 27001 and NIST CSF, alongside the CIS Benchmarks already enforced via CloudSploit",
+      "invariants": [
+        "PCI-DSS",
+        "ISO 27001",
+        "NIST CSF"
+      ],
+      "entities": [
+        "PCI-DSS",
+        "ISO 27001",
+        "NIST CSF",
+        "NIST",
+        "CIS Benchmarks"
+      ],
+      "claim_boundary": "aligns work to these standards and can discuss them -- NOT an auditor, NOT a certification holder, never 'led the ISO 27001 audit' or 'certified'"
+    },
+    {
+      "id": "cap-cvss-triage",
+      "section": "experience",
+      "source": "owner-confirmed 2026-08-24",
+      "core": "triages vulnerabilities end-to-end: CVSS-based severity scoring, false-positive analysis, risk-based prioritization, written remediation guidance, and re-validation after fixes -- the day-to-day method behind the Holm OT/SCADA CVE coverage work",
+      "invariants": [
+        "CVSS"
+      ],
+      "entities": [
+        "CVSS",
+        "false-positive analysis",
+        "risk-based prioritization",
+        "remediation guidance",
+        "re-validation",
+        "vulnerability triage"
+      ],
+      "claim_boundary": "solo IC triage across the OT and cloud surface -- never SLA/programme ownership, never 'defined the remediation SLA' or 'managed the vulnerability management programme for N clients'"
+    }
+  ]
+}

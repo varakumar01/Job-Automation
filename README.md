@@ -103,23 +103,28 @@ Content goes here...
 
 ---
 
-## Creating Role-Specific Variants (Future Phase)
+## Sector Résumé Variants
 
-When you want to tailor the resume for a specific job type:
+`varakumar_resume.tex` is the master — sacred, never auto-written. Six committed,
+hand-authored sector bases live under `resumes/`, each a full copy of the master with
+only the **lens** changed per PLAN.md's fact-atom model (same facts/numbers/entities,
+different foregrounded aspect — see `resumes/facts.json` for the fact ledger and
+PLAN.md §9 2026-08-24 for the design decisions):
 
-1. `cp varakumar_resume.tex varakumar_resume_redteam.tex`
-2. In the copy, comment out or trim sections less relevant to that role
-3. Reorder `\resumeSection` blocks to lead with the most relevant skills
-4. Tighten bullet count in less-relevant jobs to 2–3 bullets each
-
-**Common variants to create:**
-
-| Target Role | Lead With | Trim |
+| Sector | File | Leads with |
 |---|---|---|
-| Red Team / Pentest | Offensive Security + Key Achievements | Cloud Compliance details |
-| ICS/OT Security | ICS/SCADA section | AI pipeline / Android kernel |
-| Detection Engineering | Holm Security bullets + NASL | NetHunter / kernel work |
-| Cloud Security | CloudSploit + Cloud section | SCADA protocols |
+| VAPT / Pentest | `resumes/vapt.tex` | Independent Assessment (Bill Manager, PortSwigger, AD) + OSCP/TCM |
+| Cloud Security | `resumes/cloud.tex` | CloudSploit end-to-end across AWS/Azure/GCP/Oracle + CIS benchmarks |
+| OT/ICS Security | `resumes/ot-ics.tex` | 2,800+ CVEs, six vendor families, Modbus/BACnet/DNP3/PROFINET depth |
+| AppSec / API Security | `resumes/appsec.tex` | Bill Manager GHSA, crAPI/VAmPI, OWASP Top 10, PortSwigger labs |
+| Detection Engineering / SOC | `resumes/detection.tex` | Custom NASL plugin authoring, MITRE ATT&CK, feed automation |
+| Vulnerability Management | `resumes/vuln-mgmt.tex` | Nessus/OpenVAS/Qualys/NVD, triage→remediation ownership |
+
+`profile-matcher` picks the sector via `role_profile` (title-weighted keyword match with
+a win-margin gate; below the margin it falls back to `General Security` → the master).
+Each file compiles via `tectonic` to exactly one page. Per-JD reframing (rewording
+individual bullets further for a specific job, without changing facts/numbers/entities)
+is `resume-tailor`'s job — see PLAN.md §5/§8 for build status.
 
 ---
 
