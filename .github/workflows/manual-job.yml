@@ -43,28 +43,24 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Add job to store
-        run: python3 -c "
-import json
-import os
-import sys
-from data import store
-
-inputs = {k: v for k, v in os.environ.items() if k.startswith('INPUT_')}
-data = {k.replace('INPUT_', '').lower(): v for k, v in inputs.items() if v}
-
-required = ['source', 'ext_id', 'title']
-missing = [f for f in required if not data.get(f)]
-if missing:
-    print(f'Missing required fields: {missing}', file=sys.stderr)
-    sys.exit(1)
-
-data['status'] = 'scraped'
-store.init_db()
-result = store.upsert_jobs([data])
-print(f'Inserted: {result}')
-store.export_public_json()
-print('Snapshot updated.')
-"
+        run: |
+          python3 -c "
+          import os, sys
+          from data import store
+          inputs = {k: v for k, v in os.environ.items() if k.startswith('INPUT_')}
+          data = {k.replace('INPUT_', '').lower(): v for k, v in inputs.items() if v}
+          required = ['source', 'ext_id', 'title']
+          missing = [f for f in required if not data.get(f)]
+          if missing:
+              print('Missing:', missing, file=sys.stderr)
+              sys.exit(1)
+          data['status'] = 'scraped'
+          store.init_db()
+          result = store.upsert_jobs([data])
+          store.export_public_json()
+          print('Inserted:', result)
+          print('Snapshot updated.')
+          "
         env:
           INPUT_SOURCE: ${{ inputs.source }}
           INPUT_EXT_ID: ${{ inputs.ext_id }}
