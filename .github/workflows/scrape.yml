@@ -21,8 +21,8 @@ on:
   workflow_dispatch:
     inputs:
       queries:
-        description: "Comma-separated search queries"
-        default: "security engineer,detection engineer,vulnerability"
+        description: "Comma-separated search queries (resume profiles + market roles)"
+        default: "security engineer,detection engineering,vulnerability management,appsec,cloud security,red team pentest,ics ot security,grc,soc analyst,threat intelligence,security architect,incident response"
       locations:
         description: "Comma-separated locations"
         default: "Hyderabad,Bengaluru,India"
