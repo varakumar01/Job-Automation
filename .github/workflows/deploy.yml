@@ -1,7 +1,7 @@
 name: Deploy public dashboard
 
-# Builds the read-only static dashboard (web/, Vite `--mode static`) from the
-# committed `web/public/jobs.public.json` snapshot and deploys it to Netlify.
+# Deploys the static dashboard (web/dist-static) to GitHub Pages.
+# Uses GitHub Pages artifact upload (subpath deploy: repo /job-search/).
 # No backend, no secrets, no live scraping in this workflow — it only ever
 # reads what's already checked into the repo. The snapshot is refreshed either
 # by pushing a new one manually (`npm run build:static` locally, then commit)
@@ -47,15 +47,9 @@ jobs:
         working-directory: web
         run: npx tsc -b && npx vite build --mode static
 
-      - name: Deploy to Netlify
-        uses: nwtgck/actions-netlify@v3
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          publish-dir: web/dist-static
-          production-branch: master
-          production-deploy: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          deploy-message: "Deploy ${{ github.sha }}"
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        timeout-minutes: 5
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web/dist-static
+          publish_branch: gh-pages
