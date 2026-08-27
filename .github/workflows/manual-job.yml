@@ -1,0 +1,83 @@
+name: Manual job entry
+
+# Add a job to the store via workflow_dispatch (bypasses scrapers).
+# Use for roles found outside scrapers (referrals, direct applications, etc.).
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Source identifier (e.g. linkedin, wellfound, referral)"
+        required: true
+      ext_id:
+        description: "External job ID (unique per source)"
+        required: true
+      title:
+        description: "Job title"
+        required: true
+      company:
+        description: "Company name"
+        required: false
+      location:
+        description: "Job location"
+        required: false
+      url:
+        description: "Job posting URL"
+        required: false
+      posted_at:
+        description: "Posting date (YYYY-MM-DD)"
+        required: false
+      jd_text:
+        description: "Job description text"
+        required: false
+        type: string
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Add job to store
+        run: python3 -c "
+import json
+import os
+import sys
+from data import store
+
+inputs = {k: v for k, v in os.environ.items() if k.startswith('INPUT_')}
+data = {k.replace('INPUT_', '').lower(): v for k, v in inputs.items() if v}
+
+required = ['source', 'ext_id', 'title']
+missing = [f for f in required if not data.get(f)]
+if missing:
+    print(f'Missing required fields: {missing}', file=sys.stderr)
+    sys.exit(1)
+
+data['status'] = 'scraped'
+store.init_db()
+result = store.upsert_jobs([data])
+print(f'Inserted: {result}')
+store.export_public_json()
+print('Snapshot updated.')
+"
+        env:
+          INPUT_SOURCE: ${{ inputs.source }}
+          INPUT_EXT_ID: ${{ inputs.ext_id }}
+          INPUT_TITLE: ${{ inputs.title }}
+          INPUT_COMPANY: ${{ inputs.company }}
+          INPUT_LOCATION: ${{ inputs.location }}
+          INPUT_URL: ${{ inputs.url }}
+          INPUT_POSTED_AT: ${{ inputs.posted_at }}
+          INPUT_JD_TEXT: ${{ inputs.jd_text }}
+      - name: Commit snapshot if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/jobs.public.json
+          git diff --staged --quiet || git commit -m "Add manual job entry: ${{ inputs.title }} at ${{ inputs.company }}"
+          git push
