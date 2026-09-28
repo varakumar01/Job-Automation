@@ -1,6 +1,6 @@
 [
   {
-    "id": 370,
+    "id": 380,
     "source": "synopsys",
     "title": "Network Security Engineer",
     "company": "Synopsys",
@@ -11,10 +11,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:56"
+    "updated_at": "2026-09-28 09:59:07"
   },
   {
-    "id": 138,
+    "id": 168,
     "source": "jobicy",
     "title": "Security Engineer, Agent Security",
     "company": "OpenAI",
@@ -25,10 +25,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:58:57"
   },
   {
-    "id": 369,
+    "id": 379,
     "source": "synopsys",
     "title": "Senior Offensive Security Engineer",
     "company": "Synopsys",
@@ -39,10 +39,10 @@
     "llm_score": null,
     "role_profile": "Red Team / Pentest",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:56"
+    "updated_at": "2026-09-28 09:59:07"
   },
   {
-    "id": 143,
+    "id": 173,
     "source": "jobicy",
     "title": "Security Platform Engineer",
     "company": "Sporty Group",
@@ -53,10 +53,10 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:58:58"
   },
   {
-    "id": 330,
+    "id": 313,
     "source": "relocateme",
     "title": "Platform Engineer | Relocation Offered",
     "company": "PayPay Card",
@@ -67,10 +67,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:53"
+    "updated_at": "2026-09-28 09:59:04"
   },
   {
-    "id": 139,
+    "id": 169,
     "source": "jobicy",
     "title": "Security Engineer, Detection and Response",
     "company": "OpenAI",
@@ -81,10 +81,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:58:58"
   },
   {
-    "id": 371,
+    "id": 381,
     "source": "synopsys",
     "title": "Senior Staff Cyber Security Engineer - Data Security",
     "company": "Synopsys",
@@ -95,10 +95,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:56"
+    "updated_at": "2026-09-28 09:59:07"
   },
   {
-    "id": 329,
+    "id": 316,
     "source": "relocateme",
     "title": "AI Platform Engineer | Relocation Offered",
     "company": "PayPay Card",
@@ -109,10 +109,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:53"
+    "updated_at": "2026-09-28 09:59:04"
   },
   {
-    "id": 171,
+    "id": 197,
     "source": "jobicy",
     "title": "Technical Threat Investigator, Threat Intel Engineering",
     "company": "OpenAI",
@@ -123,10 +123,10 @@
     "llm_score": null,
     "role_profile": "Red Team / Pentest",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:48"
+    "updated_at": "2026-09-28 09:59:00"
   },
   {
-    "id": 170,
+    "id": 195,
     "source": "jobicy",
     "title": "Detection & CorpSec Engineer",
     "company": "Quora",
@@ -137,10 +137,10 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:48"
+    "updated_at": "2026-09-28 09:59:00"
   },
   {
-    "id": 137,
+    "id": 167,
     "source": "jobicy",
     "title": "Security Engineer, Infrastructure Security",
     "company": "OpenAI",
@@ -151,10 +151,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:46"
+    "updated_at": "2026-09-28 09:58:57"
   },
   {
-    "id": 336,
+    "id": 333,
     "source": "remote100k",
     "title": "Technical Support Engineer",
     "company": "Zscaler",
@@ -165,10 +165,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:53"
+    "updated_at": "2026-09-28 09:59:05"
   },
   {
-    "id": 179,
+    "id": 203,
     "source": "jobicy",
     "title": "Vulnerability Operation Center Lead",
     "company": "Nebius",
@@ -179,10 +179,24 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:48"
+    "updated_at": "2026-09-28 09:59:01"
   },
   {
-    "id": 78,
+    "id": 161,
+    "source": "jobicy",
+    "title": "Senior Security Engineer, Security Incident Response Team (SIRT) - EMEA",
+    "company": "GitLab",
+    "location": "EMEA",
+    "url": "https://jobicy.com/jobs/149309-senior-security-engineer-security-incident-response-team-sirt-emea",
+    "posted_at": "2026-09-28T05:25:13+00:00",
+    "match_score": 73.0,
+    "llm_score": null,
+    "role_profile": "Detection Engineering",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:58:57"
+  },
+  {
+    "id": 70,
     "source": "remoteok",
     "title": "CNAPP Security Engineer Mid Atlantic region",
     "company": "GuidePoint Security",
@@ -193,24 +207,24 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:45"
+    "updated_at": "2026-09-28 09:58:51"
   },
   {
-    "id": 259,
+    "id": 285,
     "source": "skipthedrive",
     "title": "Applied Cyber, Email Security (Detection Engineering)",
     "company": "Doppel",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/doppel-applied-cyber-email-security-detection-engineering-1432846/",
-    "posted_at": "12 days ago",
+    "posted_at": "13 days ago",
     "match_score": 71.5,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 167,
+    "id": 192,
     "source": "jobicy",
     "title": "Security Engineer, Insider Threat Detection & Response",
     "company": "OpenAI",
@@ -221,10 +235,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:48"
+    "updated_at": "2026-09-28 09:59:00"
   },
   {
-    "id": 160,
+    "id": 190,
     "source": "jobicy",
     "title": "Principal Software Engineer, Infrastructure Security",
     "company": "OpenAI",
@@ -235,10 +249,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:48"
+    "updated_at": "2026-09-28 09:59:00"
   },
   {
-    "id": 320,
+    "id": 310,
     "source": "relocateme",
     "title": "Senior Frontend Engineer | Relocation Offered",
     "company": "HENNGE",
@@ -249,10 +263,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:53"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 373,
+    "id": 383,
     "source": "synopsys",
     "title": "Senior AI Security Automation Engineer",
     "company": "Synopsys",
@@ -263,10 +277,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:56"
+    "updated_at": "2026-09-28 09:59:07"
   },
   {
-    "id": 279,
+    "id": 304,
     "source": "skipthedrive",
     "title": "Security Vulnerability Engineer (R-00224)",
     "company": "True Zero",
@@ -277,10 +291,10 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 168,
+    "id": 193,
     "source": "jobicy",
     "title": "Security Engineer, Detection & Response",
     "company": "Liftoff",
@@ -291,10 +305,10 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:48"
+    "updated_at": "2026-09-28 09:59:00"
   },
   {
-    "id": 376,
+    "id": 386,
     "source": "synopsys",
     "title": "Product Security Analyst (Vulnerability Operations Focus)",
     "company": "Synopsys",
@@ -305,24 +319,24 @@
     "llm_score": null,
     "role_profile": "Red Team / Pentest",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:56"
+    "updated_at": "2026-09-28 09:59:08"
   },
   {
-    "id": 267,
-    "source": "skipthedrive",
-    "title": "Security Engineer, Detection and Response",
-    "company": "OpenAI",
-    "location": "Remote",
-    "url": "https://www.skipthedrive.com/job/openai-security-engineer-detection-and-response-1304345/",
-    "posted_at": "30+ days ago",
-    "match_score": 64.2,
+    "id": 164,
+    "source": "jobicy",
+    "title": "Principal Cloud Security Engineer",
+    "company": "LastPass",
+    "location": "UK",
+    "url": "https://jobicy.com/jobs/151831-principal-cloud-security-engineer",
+    "posted_at": "2026-09-27T07:25:09+00:00",
+    "match_score": 65.7,
     "llm_score": null,
-    "role_profile": "Detection Engineering",
+    "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:58:57"
   },
   {
-    "id": 266,
+    "id": 292,
     "source": "skipthedrive",
     "title": "Software Engineer, Detection",
     "company": "Doppel",
@@ -333,10 +347,10 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 249,
+    "id": 275,
     "source": "skipthedrive",
     "title": "Detection & CorpSec Engineer (Remote)",
     "company": "Quora",
@@ -347,52 +361,52 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 246,
+    "id": 272,
     "source": "skipthedrive",
     "title": "Detection & Response Engineer",
     "company": "Runway",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/runway-detection-response-engineer-1439965/",
-    "posted_at": "4 days ago",
+    "posted_at": "5 days ago",
     "match_score": 64.2,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 245,
+    "id": 271,
     "source": "skipthedrive",
     "title": "Security Software Engineer II, Detection and Response",
     "company": "Pinterest",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/pinterest-security-software-engineer-ii-detection-and-response-1439879/",
-    "posted_at": "4 days ago",
+    "posted_at": "5 days ago",
     "match_score": 64.2,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 243,
+    "id": 268,
     "source": "skipthedrive",
     "title": "Security Engineer – Detection and Response",
     "company": "Spotify",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/spotify-security-engineer-detection-and-response-1441185/",
-    "posted_at": "3 days ago",
+    "posted_at": "4 days ago",
     "match_score": 64.2,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 152,
+    "id": 182,
     "source": "jobicy",
     "title": "Security Risk Management Specialist",
     "company": "Canonical",
@@ -403,10 +417,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:58:59"
   },
   {
-    "id": 55,
+    "id": 47,
     "source": "remoteok",
     "title": "Security Officer",
     "company": "Buckeye Partners",
@@ -417,52 +431,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:44"
+    "updated_at": "2026-09-28 09:58:50"
   },
   {
-    "id": 47,
-    "source": "himalayas",
-    "title": "Information Security Associate",
-    "company": "athenahealth",
-    "location": "India",
-    "url": "https://himalayas.app/companies/athenahealth/jobs/information-security-associate",
-    "posted_at": "2026-09-27T09:18:22+00:00",
-    "match_score": 64.2,
-    "llm_score": null,
-    "role_profile": "Cloud Security",
-    "status": "matched",
-    "updated_at": "2026-09-27 09:24:44"
-  },
-  {
-    "id": 365,
-    "source": "remote100k",
-    "title": "Senior Professional Services Technical Architect - Security",
-    "company": "GitLab",
-    "location": "United States",
-    "url": "https://job-boards.greenhouse.io/gitlab/jobs/8795736002?ref=remote100k",
-    "posted_at": "2026-09-12T00:00:00+00:00",
-    "match_score": 62.7,
-    "llm_score": null,
-    "role_profile": "Cloud Security",
-    "status": "matched",
-    "updated_at": "2026-09-27 09:24:55"
-  },
-  {
-    "id": 161,
-    "source": "jobicy",
-    "title": "Principal Security Engineer, Infrastructure Security",
-    "company": "OpenAI",
-    "location": "USA",
-    "url": "https://jobicy.com/jobs/153841-principal-security-engineer-infrastructure-security",
-    "posted_at": "2026-09-21T16:31:44+00:00",
-    "match_score": 61.6,
-    "llm_score": null,
-    "role_profile": "Cloud Security",
-    "status": "matched",
-    "updated_at": "2026-09-27 09:24:48"
-  },
-  {
-    "id": 398,
+    "id": 408,
     "source": "synopsys",
     "title": "Staff Software Engineer",
     "company": "Synopsys",
@@ -473,10 +445,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:57"
+    "updated_at": "2026-09-28 09:59:08"
   },
   {
-    "id": 368,
+    "id": 378,
     "source": "synopsys",
     "title": "Cyber Security Engineer",
     "company": "Synopsys",
@@ -487,10 +459,24 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:55"
+    "updated_at": "2026-09-28 09:59:07"
   },
   {
-    "id": 166,
+    "id": 37,
+    "source": "arbeitnow",
+    "title": "Security Analytics Engineer",
+    "company": "sonyinteractiveentertainmentglobal",
+    "location": "London",
+    "url": "https://www.arbeitnow.co.uk/jobs/companies/sonyinteractiveentertainmentglobal/security-analytics-engineer-london-453235",
+    "posted_at": "2026-09-27T21:55:20+00:00",
+    "match_score": 60.0,
+    "llm_score": null,
+    "role_profile": "Cloud Security",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:58:49"
+  },
+  {
+    "id": 191,
     "source": "jobicy",
     "title": "Threat Detection Analyst (Japanese & English speaking)",
     "company": "Fastly",
@@ -501,10 +487,10 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:48"
+    "updated_at": "2026-09-28 09:59:00"
   },
   {
-    "id": 144,
+    "id": 174,
     "source": "jobicy",
     "title": "Security Software Engineer",
     "company": "Canonical",
@@ -515,24 +501,24 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:58:58"
   },
   {
-    "id": 281,
+    "id": 306,
     "source": "skipthedrive",
     "title": "Tenable Vulnerability Management Engineer",
     "company": "Symmetrio",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/symmetrio-tenable-vulnerability-management-engineer-1433410/",
-    "posted_at": "25 days ago",
+    "posted_at": "26 days ago",
     "match_score": 59.2,
     "llm_score": null,
     "role_profile": "General Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 278,
+    "id": 303,
     "source": "skipthedrive",
     "title": "Vulnerability Mgmt / Scan Operator",
     "company": "Pingwind",
@@ -543,10 +529,10 @@
     "llm_score": null,
     "role_profile": "General Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 277,
+    "id": 302,
     "source": "skipthedrive",
     "title": "Intermediate Software Engineer, Security Factory: Vulnerability Management",
     "company": "GitLab",
@@ -557,10 +543,10 @@
     "llm_score": null,
     "role_profile": "General Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 273,
+    "id": 298,
     "source": "skipthedrive",
     "title": "Software Engineer, Vulnerability Management",
     "company": "Stripe",
@@ -571,10 +557,10 @@
     "llm_score": null,
     "role_profile": "General Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 270,
+    "id": 295,
     "source": "skipthedrive",
     "title": "Job Title: Information Security Engineer – Vulnerability Management III",
     "company": "Hudson Manpower",
@@ -585,38 +571,38 @@
     "llm_score": null,
     "role_profile": "General Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 269,
+    "id": 294,
     "source": "skipthedrive",
     "title": "Vulnerability & Attack Surface Management Analyst II",
     "company": "OpenLoop",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/openloop-vulnerability-attack-surface-management-analyst-ii-1440944/",
-    "posted_at": "3 days ago",
+    "posted_at": "4 days ago",
     "match_score": 59.2,
     "llm_score": null,
     "role_profile": "General Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 268,
+    "id": 293,
     "source": "skipthedrive",
     "title": "Intermediate Security Analyst, Vulnerability Operations (North America)",
     "company": "GitLab",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/gitlab-intermediate-security-analyst-vulnerability-operations-north-america-1440658/",
-    "posted_at": "3 days ago",
+    "posted_at": "4 days ago",
     "match_score": 59.2,
     "llm_score": null,
     "role_profile": "General Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 255,
+    "id": 281,
     "source": "skipthedrive",
     "title": "Senior Detection Engineer",
     "company": "DoorDash",
@@ -627,10 +613,10 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 253,
+    "id": 279,
     "source": "skipthedrive",
     "title": "Detection and Response Lead",
     "company": "ISC",
@@ -641,24 +627,24 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 244,
+    "id": 269,
     "source": "skipthedrive",
     "title": "Staff Security Engineer, Detection & Response",
     "company": "Maven Clinic",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/maven-clinic-staff-security-engineer-detection-response-1442009/",
-    "posted_at": "2 days ago",
+    "posted_at": "3 days ago",
     "match_score": 58.5,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 72,
+    "id": 64,
     "source": "remoteok",
     "title": "Senior Cloud Engineer",
     "company": "DV Trading",
@@ -669,10 +655,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:45"
+    "updated_at": "2026-09-28 09:58:51"
   },
   {
-    "id": 129,
+    "id": 89,
     "source": "workingnomads",
     "title": "Senior Cloud Engineer (Azure)",
     "company": "Proxify",
@@ -683,24 +669,24 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:46"
+    "updated_at": "2026-09-28 09:58:53"
   },
   {
-    "id": 221,
+    "id": 244,
     "source": "skipthedrive",
     "title": "Cybersecurity Tools Engineer",
     "company": "9th Way Insignia",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/9th-way-insignia-cybersecurity-tools-engineer-1438168/",
-    "posted_at": "5 days ago",
+    "posted_at": "6 days ago",
     "match_score": 56.8,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:02"
   },
   {
-    "id": 73,
+    "id": 65,
     "source": "remoteok",
     "title": "Software Engineer Identity & Access",
     "company": "Patreon",
@@ -711,38 +697,24 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:45"
+    "updated_at": "2026-09-28 09:58:51"
   },
   {
-    "id": 27,
-    "source": "arbeitnow",
-    "title": "Applied AI Scientist(m/f/d)",
-    "company": "Nc Group",
-    "location": "Berlin",
-    "url": "https://www.arbeitnow.com/jobs/companies/nc-group/applied-ai-scientist-berlin-383064",
-    "posted_at": "2026-09-26T23:09:42+00:00",
-    "match_score": 55.6,
+    "id": 264,
+    "source": "skipthedrive",
+    "title": "Security Engineer – Cloud & Infrastructure Security",
+    "company": "Harness",
+    "location": "Remote",
+    "url": "https://www.skipthedrive.com/job/harness-security-engineer-cloud-infrastructure-security-1441840/",
+    "posted_at": "3 days ago",
+    "match_score": 55.5,
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:43"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 177,
-    "source": "jobicy",
-    "title": "Chief Architect",
-    "company": "Legion",
-    "location": "USA",
-    "url": "https://jobicy.com/jobs/151374-chief-architect",
-    "posted_at": "2026-09-22T03:35:19+00:00",
-    "match_score": 55.2,
-    "llm_score": null,
-    "role_profile": "Cloud Security",
-    "status": "matched",
-    "updated_at": "2026-09-27 09:24:48"
-  },
-  {
-    "id": 65,
+    "id": 57,
     "source": "remoteok",
     "title": "Marine Interdiction Agent",
     "company": "U.S. Customs and Border Protection",
@@ -753,10 +725,10 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:45"
+    "updated_at": "2026-09-28 09:58:50"
   },
   {
-    "id": 140,
+    "id": 170,
     "source": "jobicy",
     "title": "Sr. Security Engineer",
     "company": "FastSpring",
@@ -767,10 +739,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:58:58"
   },
   {
-    "id": 284,
+    "id": 309,
     "source": "skipthedrive",
     "title": "Vulnerability Management & Application Security Liaison SPOC",
     "company": "Delan Associates",
@@ -781,24 +753,24 @@
     "llm_score": null,
     "role_profile": "Application Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 282,
+    "id": 307,
     "source": "skipthedrive",
     "title": "Vulnerability Research Software Engineer",
     "company": "Socket",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/socket-vulnerability-research-software-engineer-1434212/",
-    "posted_at": "11 days ago",
+    "posted_at": "12 days ago",
     "match_score": 52.5,
     "llm_score": null,
     "role_profile": "Vulnerability Research",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 157,
+    "id": 187,
     "source": "jobicy",
     "title": "Senior Security Engineer, Product Security",
     "company": "Goodleap",
@@ -809,24 +781,24 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:59:00"
   },
   {
-    "id": 215,
+    "id": 238,
     "source": "skipthedrive",
     "title": "Cybersecurity Data Analyst (CDM)",
     "company": "9th Way Insignia",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/9th-way-insignia-cybersecurity-data-analyst-cdm-1438162/",
-    "posted_at": "5 days ago",
+    "posted_at": "6 days ago",
     "match_score": 52.2,
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:02"
   },
   {
-    "id": 204,
+    "id": 229,
     "source": "themuse",
     "title": "Hiring Event - Software Engineers",
     "company": "L3Harris Technologies",
@@ -837,10 +809,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:02"
   },
   {
-    "id": 68,
+    "id": 60,
     "source": "remoteok",
     "title": "Counsel Business & Legal Affairs",
     "company": "MLB Network",
@@ -851,10 +823,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:45"
+    "updated_at": "2026-09-28 09:58:51"
   },
   {
-    "id": 64,
+    "id": 56,
     "source": "remoteok",
     "title": "Fire Fighter",
     "company": "Adani Airport Holdings Ltd",
@@ -865,10 +837,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:44"
+    "updated_at": "2026-09-28 09:58:50"
   },
   {
-    "id": 354,
+    "id": 351,
     "source": "remote100k",
     "title": "Staff Site Reliability Engineer",
     "company": "Replit",
@@ -879,10 +851,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:54"
+    "updated_at": "2026-09-28 09:59:06"
   },
   {
-    "id": 148,
+    "id": 178,
     "source": "jobicy",
     "title": "Senior Platform Security Engineer (100% Remote within Poland)",
     "company": "Docplanner",
@@ -893,10 +865,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:58:58"
   },
   {
-    "id": 145,
+    "id": 175,
     "source": "jobicy",
     "title": "Senior Platform Security Engineer (100% Remote within Spain)",
     "company": "Docplanner",
@@ -907,66 +879,66 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:58:58"
   },
   {
-    "id": 261,
+    "id": 287,
     "source": "skipthedrive",
     "title": "Sr. Security Engineer (Detection)",
     "company": "Solace",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/solace-sr-security-engineer-detection-1435147/",
-    "posted_at": "10 days ago",
+    "posted_at": "11 days ago",
     "match_score": 51.2,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 258,
+    "id": 284,
     "source": "skipthedrive",
     "title": "Senior Detection and Response Engineer",
     "company": "Faire",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/faire-senior-detection-and-response-engineer-1422474/",
-    "posted_at": "30 days ago",
+    "posted_at": "30+ days ago",
     "match_score": 51.2,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 223,
+    "id": 270,
+    "source": "skipthedrive",
+    "title": "Senior Detection & Response Engineer",
+    "company": "Expel",
+    "location": "Remote",
+    "url": "https://www.skipthedrive.com/job/expel-senior-detection-response-engineer-1442598/",
+    "posted_at": "2 days ago",
+    "match_score": 51.2,
+    "llm_score": null,
+    "role_profile": "Detection Engineering",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:59:03"
+  },
+  {
+    "id": 246,
     "source": "skipthedrive",
     "title": "Cybersecurity Advisor I",
     "company": "Apollo Information Systems",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/apollo-information-systems-cybersecurity-advisor-i-1438207/",
-    "posted_at": "5 days ago",
+    "posted_at": "6 days ago",
     "match_score": 51.2,
     "llm_score": null,
     "role_profile": "Red Team / Pentest",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:02"
   },
   {
-    "id": 213,
-    "source": "skipthedrive",
-    "title": "Cybersecurity Analyst",
-    "company": "DAS Health",
-    "location": "Remote",
-    "url": "https://www.skipthedrive.com/job/das-health-cybersecurity-analyst-1437415/",
-    "posted_at": "6 days ago",
-    "match_score": 51.2,
-    "llm_score": null,
-    "role_profile": "Cloud Security",
-    "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
-  },
-  {
-    "id": 108,
+    "id": 121,
     "source": "rejobs",
     "title": "OT System Architect (m/w/d)",
     "company": "FRI-EL Green Power",
@@ -977,10 +949,24 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:46"
+    "updated_at": "2026-09-28 09:58:54"
   },
   {
-    "id": 265,
+    "id": 14,
+    "source": "arbeitnow",
+    "title": "Partner Solutions Architect - MSP",
+    "company": "wizinc",
+    "location": "",
+    "url": "https://www.arbeitnow.com/jobs/companies/wizinc/partner-solutions-architect-msp-115100",
+    "posted_at": "2026-09-28T08:55:21+00:00",
+    "match_score": 49.1,
+    "llm_score": null,
+    "role_profile": "Cloud Security",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:58:48"
+  },
+  {
+    "id": 291,
     "source": "skipthedrive",
     "title": "Security Engineer, Insider Threat Detection & Response",
     "company": "OpenAI",
@@ -991,10 +977,10 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 262,
+    "id": 288,
     "source": "skipthedrive",
     "title": "Managed SIEM Detection Engineer",
     "company": "Expel",
@@ -1005,10 +991,10 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 158,
+    "id": 188,
     "source": "jobicy",
     "title": "Staff Product Security Engineer (Security)",
     "company": "Phantom",
@@ -1019,10 +1005,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:59:00"
   },
   {
-    "id": 372,
+    "id": 382,
     "source": "synopsys",
     "title": "Senior Staff Cyber Security Engineer - PAM",
     "company": "Synopsys",
@@ -1033,24 +1019,24 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:56"
+    "updated_at": "2026-09-28 09:59:07"
   },
   {
-    "id": 283,
+    "id": 308,
     "source": "skipthedrive",
     "title": "Senior Staff Security Engineer, Vulnerability Management",
     "company": "Zocdoc",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/zocdoc-senior-staff-security-engineer-vulnerability-management-1439193/",
-    "posted_at": "16 days ago",
+    "posted_at": "17 days ago",
     "match_score": 46.2,
     "llm_score": null,
     "role_profile": "General Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 275,
+    "id": 300,
     "source": "skipthedrive",
     "title": "Staff Vulnerability Management Engineer",
     "company": "Chainguard",
@@ -1061,10 +1047,10 @@
     "llm_score": null,
     "role_profile": "General Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 176,
+    "id": 202,
     "source": "jobicy",
     "title": "Support Engineer I - UK",
     "company": "ExtraHop",
@@ -1075,10 +1061,10 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:48"
+    "updated_at": "2026-09-28 09:59:01"
   },
   {
-    "id": 149,
+    "id": 179,
     "source": "jobicy",
     "title": "Blockchain Security Engineer - (Solidity / Rust / Golang)",
     "company": "CertiK",
@@ -1089,10 +1075,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:58:59"
   },
   {
-    "id": 257,
+    "id": 283,
     "source": "skipthedrive",
     "title": "Senior Detection Engineer II",
     "company": "Instacart",
@@ -1103,38 +1089,38 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 240,
+    "id": 265,
     "source": "skipthedrive",
     "title": "Senior Detection Engineering & Threat Hunting Analyst",
     "company": "Huntress",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/huntress-senior-detection-engineering-threat-hunting-analyst-1438579/",
-    "posted_at": "5 days ago",
+    "posted_at": "6 days ago",
     "match_score": 44.5,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 238,
+    "id": 259,
     "source": "skipthedrive",
     "title": "Senior Cloud Security Engineer – AI Resilience & Security Enhancements (Fixed-term contract)",
     "company": "Form3",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/form3-senior-cloud-security-engineer-ai-resilience-security-enhancements-fixed-term-contract-1439579/",
-    "posted_at": "4 days ago",
+    "posted_at": "5 days ago",
     "match_score": 44.5,
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 147,
+    "id": 177,
     "source": "jobicy",
     "title": "Staff Security Architect",
     "company": "Kraken",
@@ -1145,24 +1131,24 @@
     "llm_score": null,
     "role_profile": "Application Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:58:58"
   },
   {
-    "id": 260,
+    "id": 286,
     "source": "skipthedrive",
     "title": "Senior Security Engineer, Detection & Response",
     "company": "Flexport",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/flexport-senior-security-engineer-detection-response-1434698/",
-    "posted_at": "10 days ago",
+    "posted_at": "11 days ago",
     "match_score": 43.3,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 375,
+    "id": 385,
     "source": "synopsys",
     "title": "Security Digital Design Engineer",
     "company": "Synopsys",
@@ -1173,24 +1159,24 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:56"
+    "updated_at": "2026-09-28 09:59:07"
   },
   {
-    "id": 247,
+    "id": 273,
     "source": "skipthedrive",
     "title": "SOC Engineer / Detection Engineer",
     "company": "Talkdesk",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/talkdesk-soc-engineer-detection-engineer-1433413/",
-    "posted_at": "12 days ago",
+    "posted_at": "13 days ago",
     "match_score": 43.2,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 353,
+    "id": 350,
     "source": "remote100k",
     "title": "Sales Engineer (Strategic)",
     "company": "Cribl",
@@ -1201,10 +1187,24 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:54"
+    "updated_at": "2026-09-28 09:59:06"
   },
   {
-    "id": 155,
+    "id": 21,
+    "source": "arbeitnow",
+    "title": "Senior DevOps Engineer (AWS + CDK)",
+    "company": "JTL-Software-GmbH",
+    "location": "Berlin",
+    "url": "https://www.arbeitnow.com/jobs/companies/jtl-software-gmbh/senior-devops-engineer-aws-cdk-berlin-253709",
+    "posted_at": "2026-09-28T08:09:45+00:00",
+    "match_score": 42.4,
+    "llm_score": null,
+    "role_profile": "Cloud Security",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:58:48"
+  },
+  {
+    "id": 185,
     "source": "jobicy",
     "title": "Senior Security Operations Engineer",
     "company": "Canonical",
@@ -1215,24 +1215,24 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:58:59"
   },
   {
-    "id": 222,
+    "id": 245,
     "source": "skipthedrive",
     "title": "Senior Cybersecurity Engineer",
     "company": "9th Way Insignia",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/9th-way-insignia-senior-cybersecurity-engineer-1438169/",
-    "posted_at": "5 days ago",
+    "posted_at": "6 days ago",
     "match_score": 41.5,
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:02"
   },
   {
-    "id": 377,
+    "id": 387,
     "source": "synopsys",
     "title": "Senior AI Security Developer",
     "company": "Synopsys",
@@ -1243,10 +1243,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:56"
+    "updated_at": "2026-09-28 09:59:08"
   },
   {
-    "id": 248,
+    "id": 274,
     "source": "skipthedrive",
     "title": "Security Engineer, Detection & Response",
     "company": "Liftoff",
@@ -1257,10 +1257,10 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 367,
+    "id": 377,
     "source": "synopsys",
     "title": "Sr. Product Security Engineer",
     "company": "Synopsys",
@@ -1271,24 +1271,38 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:55"
+    "updated_at": "2026-09-28 09:59:07"
   },
   {
-    "id": 220,
+    "id": 330,
+    "source": "remote100k",
+    "title": "Staff Product Security Architect",
+    "company": "GitLab",
+    "location": "United States",
+    "url": "https://job-boards.greenhouse.io/gitlab/jobs/8815140002?ref=remote100k",
+    "posted_at": "2026-09-27T00:00:00+00:00",
+    "match_score": 39.5,
+    "llm_score": null,
+    "role_profile": "Red Team / Pentest",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:59:05"
+  },
+  {
+    "id": 243,
     "source": "skipthedrive",
     "title": "Cybersecurity Systems Architect",
     "company": "9th Way Insignia",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/9th-way-insignia-cybersecurity-systems-architect-1438167/",
-    "posted_at": "5 days ago",
+    "posted_at": "6 days ago",
     "match_score": 39.2,
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:02"
   },
   {
-    "id": 154,
+    "id": 184,
     "source": "jobicy",
     "title": "Staff Security Operations Engineer",
     "company": "Canonical",
@@ -1299,24 +1313,24 @@
     "llm_score": null,
     "role_profile": "Red Team / Pentest",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:47"
+    "updated_at": "2026-09-28 09:58:59"
   },
   {
-    "id": 29,
-    "source": "arbeitnow",
-    "title": "Senior Cloud Security Engineer (m,f,x)",
-    "company": "hellofresh",
-    "location": "Berlin, Berlin",
-    "url": "https://www.arbeitnow.com/jobs/companies/hellofresh/senior-cloud-security-engineer-mfx-berlin-berlin-497182",
-    "posted_at": "2026-09-26T20:55:02+00:00",
-    "match_score": 38.3,
+    "id": 165,
+    "source": "jobicy",
+    "title": "Compliance and Security Lead",
+    "company": "Ada",
+    "location": "Canada",
+    "url": "https://jobicy.com/jobs/151791-compliance-and-security-lead",
+    "posted_at": "2026-09-27T07:20:22+00:00",
+    "match_score": 37.8,
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:43"
+    "updated_at": "2026-09-28 09:58:57"
   },
   {
-    "id": 397,
+    "id": 407,
     "source": "synopsys",
     "title": "Senior Platform Engineer, Observability and AIOps",
     "company": "Synopsys",
@@ -1327,52 +1341,52 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:57"
+    "updated_at": "2026-09-28 09:59:08"
   },
   {
-    "id": 164,
-    "source": "jobicy",
-    "title": "Senior Software Engineer, Edge Security",
-    "company": "Fastly",
-    "location": "Canada,  Mexico,  USA",
-    "url": "https://jobicy.com/jobs/153752-senior-software-engineer-edge-security",
-    "posted_at": "2026-09-20T11:27:49+00:00",
-    "match_score": 37.5,
-    "llm_score": null,
-    "role_profile": "Cloud Security",
-    "status": "matched",
-    "updated_at": "2026-09-27 09:24:48"
-  },
-  {
-    "id": 228,
+    "id": 251,
     "source": "skipthedrive",
     "title": "Senior Cybersecurity Engineer",
     "company": "Charger Logistics",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/charger-logistics-senior-cybersecurity-engineer-1440343/",
-    "posted_at": "3 days ago",
+    "posted_at": "4 days ago",
     "match_score": 37.2,
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 264,
+    "id": 162,
+    "source": "jobicy",
+    "title": "(Senior) Information Security Architect (f/m/d)",
+    "company": "GLS Germany GmbH &#038; Co. OHG",
+    "location": "Germany",
+    "url": "https://jobicy.com/jobs/142385-senior-information-security-architect-f-m-d",
+    "posted_at": "2026-09-28T05:20:12+00:00",
+    "match_score": 36.8,
+    "llm_score": null,
+    "role_profile": "Cloud Security",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:58:57"
+  },
+  {
+    "id": 290,
     "source": "skipthedrive",
     "title": "Senior Detection Engineer (EDR), Autonomous Defense",
     "company": "Horizon3",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/horizon3-senior-detection-engineer-edr-autonomous-defense-1439659/",
-    "posted_at": "9 days ago",
+    "posted_at": "10 days ago",
     "match_score": 35.2,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 252,
+    "id": 278,
     "source": "skipthedrive",
     "title": "Staff Security Engineer – Threat Detection",
     "company": "Snowflake",
@@ -1383,52 +1397,52 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:51"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 242,
+    "id": 267,
     "source": "skipthedrive",
     "title": "Senior Security Engineer – Threat Detection",
     "company": "Samsara",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/samsara-senior-security-engineer-threat-detection-1438812/",
-    "posted_at": "5 days ago",
+    "posted_at": "6 days ago",
     "match_score": 35.2,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:03"
   },
   {
-    "id": 362,
-    "source": "remote100k",
-    "title": "Senior System Software Engineer, Software-Defined Networking",
-    "company": "NVIDIA",
-    "location": "United States",
-    "url": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite/job/US-CA-Remote/Senior-System-Software-Engineer--Software-Defined-Networking_JR2025345-1?ref=remote100k",
-    "posted_at": "2026-09-14T00:00:00+00:00",
-    "match_score": 35.0,
-    "llm_score": null,
-    "role_profile": "Cloud Security",
-    "status": "matched",
-    "updated_at": "2026-09-27 09:24:55"
-  },
-  {
-    "id": 225,
+    "id": 248,
     "source": "skipthedrive",
     "title": "Cybersecurity & Software Engineering Specialist (AI Projects)",
     "company": "Gramian",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/gramian-cybersecurity-software-engineering-specialist-ai-projects-1438531/",
-    "posted_at": "5 days ago",
+    "posted_at": "6 days ago",
     "match_score": 33.5,
     "llm_score": null,
     "role_profile": "Red Team / Pentest",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:02"
   },
   {
-    "id": 380,
+    "id": 27,
+    "source": "arbeitnow",
+    "title": "Customer Architect",
+    "company": "Elastic",
+    "location": "",
+    "url": "https://www.arbeitnow.com/jobs/companies/elastic/customer-architect-178157",
+    "posted_at": "2026-09-28T05:55:09+00:00",
+    "match_score": 32.5,
+    "llm_score": null,
+    "role_profile": "Cloud Security",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:58:48"
+  },
+  {
+    "id": 390,
     "source": "synopsys",
     "title": "Sr. Cybersecurity Corporate Counsel",
     "company": "Synopsys",
@@ -1439,10 +1453,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:57"
+    "updated_at": "2026-09-28 09:59:08"
   },
   {
-    "id": 347,
+    "id": 344,
     "source": "remote100k",
     "title": "Senior II Software Engineer",
     "company": "Akamai",
@@ -1453,24 +1467,24 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:54"
+    "updated_at": "2026-09-28 09:59:06"
   },
   {
-    "id": 216,
+    "id": 239,
     "source": "skipthedrive",
     "title": "Cybersecurity Data Engineer",
     "company": "9th Way Insignia",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/9th-way-insignia-cybersecurity-data-engineer-1438163/",
-    "posted_at": "5 days ago",
+    "posted_at": "6 days ago",
     "match_score": 31.2,
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:02"
   },
   {
-    "id": 70,
+    "id": 62,
     "source": "remoteok",
     "title": "Senior Security Engineer",
     "company": "Bridgewater Associates",
@@ -1481,10 +1495,10 @@
     "llm_score": null,
     "role_profile": "Cloud Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:45"
+    "updated_at": "2026-09-28 09:58:51"
   },
   {
-    "id": 391,
+    "id": 401,
     "source": "synopsys",
     "title": "Principal Application Engineer - Missile Defense",
     "company": "Synopsys",
@@ -1495,10 +1509,24 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:57"
+    "updated_at": "2026-09-28 09:59:08"
   },
   {
-    "id": 69,
+    "id": 19,
+    "source": "arbeitnow",
+    "title": "Senior IT Architect (m/w/d)",
+    "company": "virtual7 GmbH",
+    "location": "Homeoffice",
+    "url": "https://www.arbeitnow.com/jobs/companies/virtual7-gmbh/remote-senior-it-architect-bonn-265091",
+    "posted_at": "2026-09-28T08:30:16+00:00",
+    "match_score": 26.3,
+    "llm_score": null,
+    "role_profile": "Cloud Security",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:58:48"
+  },
+  {
+    "id": 61,
     "source": "remoteok",
     "title": "Network Engineer Factory Systems and Operational Technology",
     "company": "Anduril Industries",
@@ -1509,10 +1537,24 @@
     "llm_score": null,
     "role_profile": "ICS/OT Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:45"
+    "updated_at": "2026-09-28 09:58:51"
   },
   {
-    "id": 60,
+    "id": 210,
+    "source": "themuse",
+    "title": "Senior Mainframe Developer – IMS Database & zOS",
+    "company": "USAA",
+    "location": "San Antonio, TX",
+    "url": "https://www.themuse.com/jobs/usaa/senior-mainframe-developer-ims-database-zos-2aefbd",
+    "posted_at": "2026-09-28T04:33:19Z",
+    "match_score": 25.5,
+    "llm_score": null,
+    "role_profile": "Cloud Security",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:59:01"
+  },
+  {
+    "id": 52,
     "source": "remoteok",
     "title": "Gerente de Resposta a identes",
     "company": "Radartec",
@@ -1523,10 +1565,24 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:44"
+    "updated_at": "2026-09-28 09:58:50"
   },
   {
-    "id": 174,
+    "id": 26,
+    "source": "arbeitnow",
+    "title": "Strategic Account Executive",
+    "company": "Jfrog",
+    "location": "Remote",
+    "url": "https://www.arbeitnow.com/jobs/companies/jfrog/remote-strategic-account-executive-196007",
+    "posted_at": "2026-09-28T05:55:10+00:00",
+    "match_score": 24.2,
+    "llm_score": null,
+    "role_profile": "Red Team / Pentest",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:58:48"
+  },
+  {
+    "id": 200,
     "source": "jobicy",
     "title": "Senior Software Engineer - Verification Platform",
     "company": "Veriff",
@@ -1537,20 +1593,48 @@
     "llm_score": null,
     "role_profile": "Detection Engineering",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:48"
+    "updated_at": "2026-09-28 09:59:00"
   },
   {
-    "id": 237,
+    "id": 263,
+    "source": "skipthedrive",
+    "title": "Security Engineer II, Application Security",
+    "company": "Trail of Bits",
+    "location": "Remote",
+    "url": "https://www.skipthedrive.com/job/trail-of-bits-security-engineer-ii-application-security-1441276/",
+    "posted_at": "4 days ago",
+    "match_score": 20.0,
+    "llm_score": null,
+    "role_profile": "Application Security",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:59:03"
+  },
+  {
+    "id": 262,
+    "source": "skipthedrive",
+    "title": "Security Engineer I, Application Security",
+    "company": "Trail of Bits",
+    "location": "Remote",
+    "url": "https://www.skipthedrive.com/job/trail-of-bits-security-engineer-i-application-security-1441275/",
+    "posted_at": "4 days ago",
+    "match_score": 20.0,
+    "llm_score": null,
+    "role_profile": "Application Security",
+    "status": "matched",
+    "updated_at": "2026-09-28 09:59:03"
+  },
+  {
+    "id": 258,
     "source": "skipthedrive",
     "title": "Security Engineer, Application Security",
     "company": "GameChanger",
     "location": "Remote",
     "url": "https://www.skipthedrive.com/job/gamechanger-security-engineer-application-security-1438509/",
-    "posted_at": "5 days ago",
+    "posted_at": "6 days ago",
     "match_score": 20.0,
     "llm_score": null,
     "role_profile": "Application Security",
     "status": "matched",
-    "updated_at": "2026-09-27 09:24:50"
+    "updated_at": "2026-09-28 09:59:03"
   }
 ]
